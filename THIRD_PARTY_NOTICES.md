@@ -13,4 +13,4 @@ Dubly source code is licensed under Apache-2.0. Bundled dependencies retain thei
 - Pretendard: SIL Open Font License 1.1. https://github.com/orioncactus/pretendard
 - PyTorch, CUDA libraries and other Python packages: licenses and notices are included in their package directories or `.dist-info` directories. NVIDIA runtime libraries are subject to NVIDIA redistribution terms. https://docs.nvidia.com/cuda/eula/
 
-The installer targets Windows 11 x64 with a supported NVIDIA GPU and installed graphics driver. API usage requires an OpenRouter account and is billed separately by the provider.
+The installer targets Windows 10 version 1809 or later (x64) with a supported NVIDIA GPU and installed graphics driver. API usage requires an OpenRouter account and is billed separately by the provider.

@@ -1,6 +1,6 @@
 # Windows installer build
 
-End users only run the installer. They do not need Python, .NET, FFmpeg, WSL, or model downloads. The current build requires Windows 11 x64 and a supported NVIDIA GPU/driver.
+End users only run the installer. They do not need Python, .NET, FFmpeg, WSL, or model downloads. The current build requires Windows 10 version 1809 or later (x64) and a supported NVIDIA GPU/driver.
 
 For developers, build from the configured production environment with .NET 8 SDK, Inno Setup 7, Visual Studio C++ Build Tools, and LLVM installed. Run `setup.ps1` first to prepare the production dependencies and models; MFA provisioning uses Miniforge.
 

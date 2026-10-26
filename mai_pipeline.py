@@ -228,7 +228,7 @@ def translate(clean,work,output,cfg,progress,*,source_loader=None,region_builder
     import speech
     work=Path(work);work.mkdir(parents=True,exist_ok=True)
     raw,source_identity=(source_loader or transcribe_source)(clean,Path(clean).parent/cache_directory,cfg['key'],progress)
-    label={'fish':'Fish','nemotron':'Nemotron + Fish'}.get(prefix,'MAI')
+    label={'fish':'Fish','gemini':'Gemini','nemotron':'Nemotron + Fish'}.get(prefix,'MAI')
     rows,audit=(boundary_builder or correct_edges)(clean,(region_builder or word_regions)(raw,sf.info(clean).duration),
         lambda p,d:progress(p,d.replace('MAI',label)))
     atomic_json(work/f'{prefix}-boundaries.json',{'rows':rows,'measurements':audit})
@@ -243,6 +243,7 @@ def translate(clean,work,output,cfg,progress,*,source_loader=None,region_builder
         atomic_json(work/'gemini-audio-input.json',audio_manifest)
     cache=work/f'{prefix}-translation.json';saved=json.loads(cache.read_text('utf8')) if cache.exists() else {}
     ids=[r['id'] for r in rows]
+    translation_requests=0
     if saved.get('signature')==signature:
         parsed=parser(json.dumps(saved['translations'],ensure_ascii=False));usage=saved.get('usage',{})
     elif rows:
@@ -257,6 +258,7 @@ def translate(clean,work,output,cfg,progress,*,source_loader=None,region_builder
         def activity(event):
             n=min(len(rows),event.get('received_segments',0));elapsed=round(event.get('elapsed_seconds',0))
             progress(50+45*n/max(1,len(rows)),f'구간 번역 {n}/{len(rows)}개 수신 · {elapsed}초')
+        translation_requests=1
         parsed,usage=speech.http_json(payload,cfg['key'],response_directory=work/f'{prefix}-responses',parser=parser,on_activity=activity,expected_region_ids=ids)
         encoded={str(r['id']):([text,parsed['speaker_corrections'][str(r['id'])]] if str(r['id']) in parsed['speaker_corrections'] else text) for r,text in zip(rows,parsed['values'])}
         atomic_json(cache,{'signature':signature,'translations':parsed.get('response_entries',encoded),'usage':usage})
@@ -291,7 +293,7 @@ def translate(clean,work,output,cfg,progress,*,source_loader=None,region_builder
     result={'segments':segments,'excluded_intervals':excluded,'source_regions':rows,'speaker_timeline':timeline,'reference_windows':windows,'boundary_measurements':audit,
         'boundary_authority':authority,'word_grouping':WORD_GROUPING,'speaker_authority':prefix+('_with_gemini_audio_and_context_corrections' if audio_manifest else '_with_gemini_explicit_context_corrections'),'speaker_corrections':corrections,'source_asr_model':source_model,'source_asr_input_policy':source_input_policy,
         'source_languages':[raw.get('language') or 'unknown'],'original_text_source':source_model,'target_language':cfg['language'],'duration_seconds':timeline['duration'],'time_unit':'seconds',
-        'asr_used':True,'llm_timestamps':False,'word_reassignments':reassignments,'request_count':int(bool(rows)),'translation_output':'region_id_to_translation_with_optional_speaker_word_span_or_speaker_parts','usage':usage,'unmatched_segments':[],
+        'asr_used':True,'llm_timestamps':False,'word_reassignments':reassignments,'request_count':translation_requests,'translation_output':'region_id_to_translation_with_optional_speaker_word_span_or_speaker_parts','usage':usage,'unmatched_segments':[],
         'llm_audio_input':({k:v for k,v in audio_manifest.items() if k!='path'} if audio_manifest else None),
         'transition_policy':'standard_external_fade','reference_tail_policy':{'enabled':False,'method':prefix+'_waveform_edges_before_translation'}}
     atomic_json(output,result);progress(100,f'{label} {len(rows)}개 전사·경계 보정 · {len(segments)}개 번역 완료')

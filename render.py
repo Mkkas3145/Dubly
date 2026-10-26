@@ -471,7 +471,7 @@ def prepare_segments(transcript,frames,source_transcription=None):
             a=round(interval['start']*SR);b=round(interval['end']*SR)
             if b<=lo:left=max(left,b)
             if a>=hi:right=min(right,a)
-        segment.update(natural_reference_margin=transcript.get('boundary_authority') not in ('diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'),reference_margin_left=left,reference_margin_right=right)
+        segment.update(natural_reference_margin=transcript.get('boundary_authority') not in ('diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','gemini_native_audio','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'),reference_margin_left=left,reference_margin_right=right)
     return result
 
 

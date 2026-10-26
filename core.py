@@ -14,7 +14,7 @@ TTS_CONCURRENCY = 20
 FIT_CONCURRENCY = 40
 DEFAULT_SEPARATOR = 'mel-band-roformer-deux'
 DEFAULT_BACKGROUND = 'mel-band-roformer-deux'
-DEFAULT_DIARIZER = 'fish-transcribe-1-pro'
+DEFAULT_DIARIZER = 'gemini-native-audio'
 MODEL_HASH = '87201f4d31afb5bc79993230fc49446918425574db48c01c405e44f365c7559e'
 LANGUAGE_CATALOG=json.loads((ROOT/'assets/languages.json').read_text(encoding='utf8'))
 SOURCE_LANGUAGES=frozenset(LANGUAGE_CATALOG['source'])

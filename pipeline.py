@@ -85,13 +85,13 @@ def run(video_id,action='full',segment_index=None):
             if sf.info(original).frames!=sf.info(clean).frames:raise RuntimeError('Separated audio duration does not match.')
             atomic_json(work/'waveform-source.json',{'path':str(clean),'kind':'clean'})
             update(100)
-        transcription_model=QWEN if cfg['diarizer']=='qwen-omni-full' else GEMINI
-        transcription_tag='scribe-native-spoken-boundaries-point-recovery-gemini-v7' if cfg['diarizer']=='scribe-v2' else 'fish-native-fixed-speakers-local-edges-gemini-v2' if cfg['diarizer']=='fish-transcribe-1-pro' else 'voxtral-native-qwen-cues-gemini-v1' if cfg['diarizer']=='voxtral-transcribe-3' else 'qwen-source-speakers-nicknames-cues-gemini-v1' if cfg['diarizer']=='qwen-source-gemini' else 'mai-acoustic-speakers-qwen-cues-gemini-v1' if cfg['diarizer']=='mai-transcribe-2' else 'moss-native-text-gemini-v1' if cfg['diarizer']=='moss-gemini' else 'fish-qwen-gemini-v1' if cfg['diarizer']=='fish-qwen-gemini' else transcription_model.split('/')[-1]
+        transcription_model=GEMINI
+        transcription_tag='gemini-native-audio-cues-speakers-nicknames-v1'
         dialogue_work=stage_work/f'full-audio-v{TRANSCRIPTION_VERSION}-{cfg["language"]}-{transcription_tag}'
         dialogue_work.mkdir(exist_ok=True)
         transcript=transcribe(clean,dialogue_work,dialogue_work/'segments.json',cfg,
             phase('2/4 전체 음성 전사·번역',32,52))
-        if transcript.get('boundary_authority') in ('scribe_v2','voxtral_transcribe_3','diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'):source_transcription={}
+        if transcript.get('boundary_authority') in ('scribe_v2','voxtral_transcribe_3','diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','gemini_native_audio','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'):source_transcription={}
         else:
             source_cache=stage_work/'scribe-source-v1';source_cache_file=source_cache/'scribe.json'
             source_language=json.loads(source_cache_file.read_text(encoding='utf-8')).get('signature',{}).get('language') if source_cache_file.exists() else None

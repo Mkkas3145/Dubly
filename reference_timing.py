@@ -56,7 +56,7 @@ def refine_references(clean,transcript,folder,progress=lambda *args:None,source_
         atomic_json(folder/'measured.json',{'transcript':transcript,'measurements':[]})
         progress(100,'원본 전사 시작·끝 그대로 사용 · 추가 경계 보정 없음')
         return transcript,[]
-    if transcript.get('boundary_authority') in ('scribe_v2','mai_transcribe_2','fish_transcribe_1_pro','qwen_omni_audio','fish_qwen_gemini'):
+    if transcript.get('boundary_authority') in ('scribe_v2','mai_transcribe_2','fish_transcribe_1_pro','gemini_native_audio','qwen_omni_audio','fish_qwen_gemini'):
         measurements=transcript.get('boundary_measurements',[])
         atomic_json(folder/'measured.json',{'transcript':transcript,'measurements':measurements})
         progress(100,'파형 경계 보정 완료 · 측정한 참조 경계 사용')

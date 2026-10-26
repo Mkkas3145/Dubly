@@ -10,7 +10,7 @@ import soundfile as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from core import GEMINI, LANGUAGES, atomic_json, command
 
-TRANSCRIPTION_VERSION=34
+TRANSCRIPTION_VERSION=35
 OUTPUT_SCHEMA_VERSION=9
 # OpenRouter's model-level top_provider.max_completion_tokens for Gemini 4 Argon.
 MAX_OUTPUT_TOKENS=65536
@@ -440,7 +440,7 @@ def normalize(segments,excluded,preserve_speakers=False):
 
 
 def transcribe(clean,work,output,cfg,progress,source_transcription=None):
-    """Gemini hears audio directly, then translates its annotated dialogue."""
+    """Gemini returns dialogue, translations, cues and speakers in one audio request."""
     if cfg.get('diarizer','gemini-native-audio')!='gemini-native-audio':
         raise ValueError('Unsupported transcription pipeline.')
     from gemini_source_pipeline import transcribe as analyze

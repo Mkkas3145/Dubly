@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__VIDEO_NAME__ · Fast Dubbing</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#11151b;color:#edf0f4;font:14px/1.6 system-ui,"Malgun Gothic",sans-serif}main{max-width:1120px;margin:32px auto;padding:0 20px}header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px}h1{font-size:16px;font-weight:500;margin:0;overflow-wrap:anywhere}nav{display:flex;gap:18px;flex-shrink:0}a{color:#b9cbea;text-decoration:none}a:hover{text-decoration:underline}video{display:block;width:100%;max-height:calc(100dvh - 120px);background:#000;border-radius:8px}@media(max-width:600px){main{margin:20px auto;padding:0 12px}header{align-items:flex-start;flex-direction:column;gap:10px}}
+</style>
+</head>
+<body><main>
+<header><h1>__VIDEO_NAME__</h1><nav aria-label="영상 메뉴"><a href="/">목록</a><a href="/api/videos/__VIDEO_ID__/download" download>다운로드</a></nav></header>
+<video controls playsinline preload="metadata" aria-label="더빙 영상" src="/api/videos/__VIDEO_ID__/stream">이 브라우저에서 영상을 재생할 수 없습니다. <a href="/api/videos/__VIDEO_ID__/download">MP4 다운로드</a></video>
+</main></body>
+</html>

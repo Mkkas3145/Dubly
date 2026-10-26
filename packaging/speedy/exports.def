@@ -1,0 +1,10 @@
+LIBRARY speedy
+EXPORTS
+ sonicCreateStream
+ sonicDestroyStream
+ sonicSetSpeed
+ sonicEnableNonlinearSpeedup
+ sonicSetDurationFeedbackStrength
+ sonicWriteShortToStream
+ sonicReadShortFromStream
+ sonicFlushStream

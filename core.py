@@ -7,7 +7,7 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parent
 SR = 44100
-GEMINI = 'google/gemini-3.8-flash'
+GEMINI = 'google/gemini-4-argon'
 QWEN = 'qwen/qwen3.8-omni-flash'
 FISH = 'fish-audio/drama-3'
 TTS_CONCURRENCY = 20

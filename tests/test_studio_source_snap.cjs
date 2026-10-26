@@ -29,7 +29,7 @@ test('moving aligns either edge while preserving clip duration',()=>{
 });
 
 test('phrase groups bridge short pauses and expose only outer snap boundaries',()=>{
- const fine=[{start:1,end:1.3},{start:1.7,end:2},{start:2.8,end:3},{start:4,end:5}];
+ const fine=[{start:1,end:1.3},{start:1.5,end:2},{start:2.2,end:3},{start:4,end:5}];
  const grouped=groupRegions(fine);
  assert.equal(grouped.length,2);assert.equal(grouped[0].parts.length,3);
  assert.deepEqual(Array.from(boundaries(grouped)),[1,3,4,5]);
@@ -41,8 +41,8 @@ test('short replies from another voice retain their own boundaries',()=>{
  assert.equal(groupRegions(fine,turns).length,3);
 });
 test('an unknown span cannot bridge two known different voices',()=>{
- const fine=[{start:1,end:1.2},{start:1.5,end:1.6},{start:2,end:2.2}];
- const turns=[{start:1,end:1.2,speaker_id:'0'},{start:2,end:2.2,speaker_id:'1'}];
+ const fine=[{start:1,end:1.2},{start:1.4,end:1.6},{start:1.8,end:2.2}];
+ const turns=[{start:1,end:1.2,speaker_id:'0'},{start:1.8,end:2.2,speaker_id:'1'}];
  assert.equal(groupRegions(fine,turns).length,2);
 });
 

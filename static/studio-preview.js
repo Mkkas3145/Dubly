@@ -98,7 +98,7 @@
    openStart:a===0,openEnd:b===peaks.length
   }));
  }
- function groupRegions(regions,turns=[],gapSeconds=.8){
+ function groupRegions(regions,turns=[],gapSeconds=.2){
   const rows=turns.filter(r=>!r.deleted),result=[];
   for(const region of regions){
    const voices=new Set(rows.filter(r=>Math.min(r.end,region.end)-Math.max(r.start,region.start)>.015).map(r=>String(r.speaker_id??r.speaker)));

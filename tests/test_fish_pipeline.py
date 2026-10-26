@@ -127,6 +127,7 @@ def test_inline_speaker_tags_and_emotion_survive_word_grouping():
     assert rows[0]['start']==.2 and rows[0]['end']==1.
 
 def test_whole_fish_to_translation_and_shared_reference_without_mai(tmp_path):
+    from speech import transcribe
     from render import prepare_segments
     from shared_reference import plan
     from reference_timing import refine_references
@@ -140,8 +141,9 @@ def test_whole_fish_to_translation_and_shared_reference_without_mai(tmp_path):
         return kwargs['parser']('{"0":"[驚き]아! 정말?","1":"[笑い]네."}'),{}
     with patch('fish_pipeline.transcribe_words',return_value=rich_answer()) as asr, \
          patch('mai_pipeline.transcribe_source',side_effect=AssertionError('MAI must not run')), \
-         patch('speech.http_json',side_effect=api):
-        result=translate(clean,tmp_path/'translation',tmp_path/'result.json',{'key':'test','language':'ko'},lambda *a:None)
+         patch('speech.http_json',side_effect=api), \
+         patch('scribe_pipeline.transcribe',side_effect=AssertionError('Scribe/Qwen must not run')):
+        result=transcribe(clean,tmp_path/'translation',tmp_path/'result.json',{**config(),'key':'test','language':'ko'},lambda *a:None)
     assert asr.call_count==1 and len(calls)==1
     assert asr.call_args.args[0]==clean
     assert result['source_asr_model']==MODEL and result['boundary_authority']==AUTHORITY
@@ -152,11 +154,11 @@ def test_whole_fish_to_translation_and_shared_reference_without_mai(tmp_path):
     same,_=refine_references(clean,result,tmp_path/'reference')
     assert same is result
 
-def test_explicit_legacy_fish_dispatch_uses_fish_only(tmp_path):
+def test_production_fish_dispatch_uses_fish_only(tmp_path):
     from speech import transcribe
     with patch('fish_pipeline.translate',return_value={'ok':True}) as fish, \
-         patch('native_timeline.translate',side_effect=AssertionError('legacy called')):
-        assert transcribe('audio',tmp_path,tmp_path/'result',{**config(),'diarizer':'fish-transcribe-1-pro'},lambda *a:None)=={'ok':True}
+         patch('scribe_pipeline.transcribe',side_effect=AssertionError('Scribe/Qwen must not run')):
+        assert transcribe('audio',tmp_path,tmp_path/'result',config(),lambda *a:None)=={'ok':True}
     assert fish.call_count==1
 
 
@@ -183,8 +185,8 @@ def test_zero_duration_token_does_not_enter_neighbor_voice():
 def test_default_individual_fish_pipeline_and_frozen_translation_contract():
     from fish_pipeline import fixed_translations
     cfg=config()
-    assert cfg['diarizer']=='scribe-v2'
-    assert cfg['tts_mode']=='same_speaker_batches' and cfg['tts_reference_mode']=='same_speaker_batch'
+    assert cfg['diarizer']=='fish-transcribe-1-pro'
+    assert cfg['tts_mode']=='individual' and cfg['tts_reference_mode']=='same_speaker_tagged_context'
     assert cfg['speaker_embeddings'] is False
     rows=[{'id':0}]
     for response in ['{}','{"0":["대사","1"]}','{"0":"대사","0":"다른 대사"}']:
@@ -211,7 +213,7 @@ def test_fish_language_hint_uses_iso_code_and_auto_detection_recognizes_new_lang
     for raw,expected in [({'language':'Armenian'},'hy'),({'language_code':'as','language':'Assamese'},'as'),({'language':'tl'},'fil')]:
         assert detected_languages(raw)[0]==expected
         record_auto_language(raw,{'source_language_auto':True,'language':'ko'})
-    with pytest.raises(RuntimeError,match='같습니다'):
+    with pytest.raises(RuntimeError,match='matches the target language'):
         record_auto_language({'language_code':'hy'},{'source_language_auto':True,'language':'hy'})
 
 

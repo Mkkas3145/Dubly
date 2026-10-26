@@ -192,6 +192,8 @@ def regions(raw,duration,*,clean=None):
             min(g['end'],row['end'])>max(g['start'],row['start']) or
             (g['start']==g['end'] and g['speaker']==row['speaker'] and
                 (row['start']<=g['start']<row['end'] or row['start']==row['end']==g['start']))]
+    from source_word_boundaries import repair_japanese_boundaries
+    rows,_=repair_japanese_boundaries(rows,raw.get('text',''))
     return rows
 
 TEXT_PROMPT='''Translate each numbered source dialogue faithfully into natural spoken {language}. Preserve meaning, expressive punctuation, hesitations and unfinished speech. The source transcript, speaker IDs and boundaries are fixed by Fish ASR and local acoustic correction. Never change speakers, move words between IDs, merge regions or rewrite the source. No audio is provided. Preserve EVERY supplied square-bracket cue VERBATIM in its ORIGINAL language, including its exact spelling and bracket contents, at the corresponding position. Never translate, paraphrase, replace, omit or add cues. For example, keep [足音] exactly as [足音]; never turn it into [footsteps]. Translate only spoken dialogue outside the brackets. Do not invent or intensify cues.
@@ -226,9 +228,14 @@ def translate(clean,work,output,cfg,progress):
     def load(clean,folder,key,progress):
         raw,identity=source(clean,folder,key,progress,language=cfg.get('source_language'))
         record_auto_language(raw,cfg)
-        return raw,{**identity,'translation_policy':'fixed_fish_speakers_original_cues_numeric_literals_v6'}
+        return raw,{**identity,'translation_policy':'fixed_fish_speakers_original_cues_corrected_gap_groups_v7'}
+    def boundaries(clean,rows,progress):
+        from corrected_source_groups import merge_corrected
+        corrected,audit=correct_fish_edges(clean,rows,progress)
+        merged,merges=merge_corrected(corrected,.8)
+        return merged,audit+merges
     result=translate_regions(clean,work,output,cfg,progress,source_loader=load,region_builder=lambda raw,duration:regions(raw,duration,clean=clean),
-        source_model=MODEL,authority=AUTHORITY,prompt=TEXT_PROMPT.format(language=LANGUAGES[cfg['language']]),boundary_builder=correct_fish_edges,
+        source_model=MODEL,authority=AUTHORITY,prompt=TEXT_PROMPT.format(language=LANGUAGES[cfg['language']]),boundary_builder=boundaries,
         cache_directory=CACHE_DIRECTORY,source_input_policy=INPUT_POLICY,prefix='fish',
         response_parser=fixed_translations,format_builder=lambda:schema('translations'))
     result.update(preserve_source_speaker_ids=True,speaker_authority=MODEL,source_transcription_model=MODEL,

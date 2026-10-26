@@ -10,7 +10,7 @@ import soundfile as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from core import GEMINI, LANGUAGES, atomic_json, command
 
-TRANSCRIPTION_VERSION=32
+TRANSCRIPTION_VERSION=33
 OUTPUT_SCHEMA_VERSION=9
 # OpenRouter's model-level top_provider.max_completion_tokens for Gemini 4 Argon.
 MAX_OUTPUT_TOKENS=65536
@@ -440,11 +440,11 @@ def normalize(segments,excluded,preserve_speakers=False):
 
 
 def transcribe(clean,work,output,cfg,progress,source_transcription=None):
-    """The production source path is Scribe, Qwen performance review, then Gemini."""
-    if cfg.get('diarizer','scribe-v2')!='scribe-v2':
+    """Fish supplies source text, speakers and cues; Gemini translates the text."""
+    if cfg.get('diarizer','fish-transcribe-1-pro')!='fish-transcribe-1-pro':
         raise ValueError('Unsupported transcription pipeline.')
-    from scribe_pipeline import transcribe as scribe_transcribe
-    return scribe_transcribe(clean,work,output,cfg,progress)
+    from fish_pipeline import translate
+    return translate(clean,work,output,cfg,progress)
 
 
 def parse_translated_dialogue(content):

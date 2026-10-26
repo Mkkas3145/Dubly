@@ -3,7 +3,7 @@ from unittest.mock import patch
 import numpy as np
 import soundfile as sf
 from core import config,SR
-from speech import transcribe
+from scribe_pipeline import transcribe
 import scribe_pipeline as s
 import pytest
 
@@ -21,7 +21,7 @@ def test_scribe_words_go_through_performance_review_before_translation(tmp_path)
         assert context[1]['text']=='Yes!'
         assert 'Scribe ASR' in payload['messages'][0]['content']
         return {'0':'안녕하세요, 반갑습니다.','1':'네!'},{'usage':{}}
-    cfg={**config(),'key':'test','language':'ko'}
+    cfg={**config(),'key':'test','language':'ko','diarizer':'scribe-v2'}
     assert cfg['diarizer']=='scribe-v2' and not cfg['speaker_embeddings']
     with patch('scribe.urllib.request.urlopen',return_value=io.BytesIO(json.dumps(raw).encode())) as api, \
          patch.object(s,'correct_fish_edges',side_effect=lambda clean,rows,progress:(rows,[])), \

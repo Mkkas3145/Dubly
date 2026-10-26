@@ -20,6 +20,16 @@ def sse(content,finish='stop',error=None):
 
 
 class StreamingTests(unittest.TestCase):
+    def test_activity_callback_alone_enables_incremental_translation_streaming(self):
+        events=[]
+        with patch.object(speech.urllib.request,'urlopen',return_value=sse(['{"0":"first",','"1":"second"}'])) as request:
+            result,_=speech.http_json({'model':'test'},'test',parser=json.loads,on_activity=events.append,expected_region_ids=[0,1])
+        self.assertTrue(json.loads(request.call_args.args[0].data)['stream'])
+        self.assertEqual(result,{'0':'first','1':'second'})
+        counts=[e['received_segments'] for e in events]
+        self.assertIn(1,counts)
+        self.assertIn(2,counts)
+
     def test_voice_numbers_wait_for_complete_numeric_value(self):
         counter=speech.SegmentStreamCounter([0,1])
         self.assertEqual(counter.feed('{"0":1'),0)

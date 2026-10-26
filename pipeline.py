@@ -86,7 +86,7 @@ def run(video_id,action='full',segment_index=None):
             atomic_json(work/'waveform-source.json',{'path':str(clean),'kind':'clean'})
             update(100)
         transcription_model=GEMINI
-        transcription_tag='gemini-one-audio-request-transcription-translation-cues-speakers-v2'
+        transcription_tag=cfg['diarizer']+'-native-fixed-text-speakers-gemini-translation-v1'
         dialogue_work=stage_work/f'full-audio-v{TRANSCRIPTION_VERSION}-{cfg["language"]}-{transcription_tag}'
         dialogue_work.mkdir(exist_ok=True)
         transcript=transcribe(clean,dialogue_work,dialogue_work/'segments.json',cfg,

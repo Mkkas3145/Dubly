@@ -10,7 +10,7 @@ import soundfile as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from core import GEMINI, LANGUAGES, atomic_json, command
 
-TRANSCRIPTION_VERSION=35
+TRANSCRIPTION_VERSION=41
 OUTPUT_SCHEMA_VERSION=9
 # OpenRouter's model-level top_provider.max_completion_tokens for Gemini 4 Argon.
 MAX_OUTPUT_TOKENS=65536
@@ -337,7 +337,9 @@ def read_stream(response,on_segments,record=None,on_activity=None,expected_regio
 
 
 def http_json(payload,key,response_directory=None,on_segments=None,parser=None,on_activity=None,expected_region_ids=None):
-    if on_segments is not None:
+    streaming=on_segments is not None or on_activity is not None
+    segment_callback=on_segments if on_segments is not None else lambda count:None
+    if streaming:
         payload={**payload,'stream':True,'stream_options':{'include_usage':True}}
     request=urllib.request.Request('https://openrouter.ai/api/v1/chat/completions',data=json.dumps(payload).encode(),method='POST',
         headers={'Authorization':f'Bearer {key}','Content-Type':'application/json','X-Title':'Fast Dubbing'})
@@ -346,13 +348,13 @@ def http_json(payload,key,response_directory=None,on_segments=None,parser=None,o
             if on_segments is not None:on_segments(0)
             if on_activity is not None:on_activity({'stage':'request_start','elapsed_seconds':0,'attempt':attempt+1,'received_segments':0})
             with urllib.request.urlopen(request,timeout=900) as response:
-                if on_segments is None:data=json.load(response)
-                elif response_directory is None:data=read_stream(response,on_segments,on_activity=on_activity,expected_region_ids=expected_region_ids)
+                if not streaming:data=json.load(response)
+                elif response_directory is None:data=read_stream(response,segment_callback,on_activity=on_activity,expected_region_ids=expected_region_ids)
                 else:
                     from pathlib import Path
                     Path(response_directory).mkdir(parents=True,exist_ok=True)
                     with (Path(response_directory)/f'gemini-stream-{time.time_ns()}-{attempt+1}.sse').open('wb') as record:
-                        data=read_stream(response,on_segments,record,on_activity=on_activity,expected_region_ids=expected_region_ids)
+                        data=read_stream(response,segment_callback,record,on_activity=on_activity,expected_region_ids=expected_region_ids)
             record_path=None
             if response_directory is not None:
                 from pathlib import Path
@@ -448,10 +450,13 @@ def normalize(segments,excluded,preserve_speakers=False):
 
 
 def transcribe(clean,work,output,cfg,progress,source_transcription=None):
-    """Gemini returns dialogue, translations, cues and speakers in one audio request."""
-    if cfg.get('diarizer','gemini-native-audio')!='gemini-native-audio':
-        raise ValueError('Unsupported transcription pipeline.')
-    from gemini_source_pipeline import transcribe as analyze
+    """ASR supplies words, speakers and times; Gemini translates text only."""
+    mode=cfg.get('diarizer','scribe-v2')
+    if mode=='fish-transcribe-1-pro':
+        from fish_pipeline import translate as analyze
+    elif mode=='scribe-v2':
+        from scribe_pipeline import transcribe as analyze
+    else:raise ValueError('Unsupported transcription pipeline.')
     return analyze(clean,work,output,cfg,progress)
 
 

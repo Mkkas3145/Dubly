@@ -138,7 +138,7 @@ def _request_audio(reference,segment,language,key,destination,brief=False):
         'input_references':[{'type':'input_audio','input_audio':{'data':'data:audio/wav;base64,'+base64.b64encode(reference.read_bytes()).decode()}},
                             {'type':'text','text':reference_text}],
         'provider':{'options':{'fish-audio':provider_options}}}
-    payload['instructions']=segment.get('_instructions',tts_instructions(language,brief=brief,source_language=segment.get('_source_language'),structured=bool(segment.get('_reference_language_wrappers'))))
+    payload['instructions']=segment.get('_instructions',tts_instructions(language,brief=brief,source_language=segment.get('_source_language'),structured=bool(segment.get('_structured_instructions',segment.get('_reference_language_wrappers')))))
     if segment.get('_omit_instructions'):payload.pop('instructions',None)
     if not reference_text.strip():
         payload['input_references']=[item for item in payload['input_references'] if item['type']!='text']
@@ -228,7 +228,7 @@ def fits_next_dialogue(report,collision_budget=None):
 def generate_speech(index,segment,clean,folder,cfg,force_prepared=False):
     segment={**segment,'_omit_instructions':segment.get('_omit_instructions',cfg.get('tts_omit_instructions',False)),'_delivery_cue':cfg.get('tts_delivery_cue'),'_provider_options':{**cfg.get('tts_provider_options',{}),**segment.get('_provider_options',{})}}
     segment.setdefault('_source_language',cfg.get('source_language'))
-    segment.setdefault('_instructions',tts_instructions(cfg['language'],source_language=segment['_source_language'],structured=bool(segment.get('_reference_language_wrappers'))))
+    segment.setdefault('_instructions',tts_instructions(cfg['language'],source_language=segment['_source_language'],structured=bool(segment.get('_structured_instructions',segment.get('_reference_language_wrappers')))))
     reference=folder/f'{index:04d}-reference.wav'
     generated=folder/f'{index:04d}-tts.mp3'
     fitted=folder/f'{index:04d}-fitted.wav'
@@ -471,7 +471,7 @@ def prepare_segments(transcript,frames,source_transcription=None):
             a=round(interval['start']*SR);b=round(interval['end']*SR)
             if b<=lo:left=max(left,b)
             if a>=hi:right=min(right,a)
-        segment.update(natural_reference_margin=transcript.get('boundary_authority') not in ('diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','gemini_native_audio','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'),reference_margin_left=left,reference_margin_right=right)
+        segment.update(natural_reference_margin=transcript.get('boundary_authority') not in ('scribe_v2','diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','gemini_native_audio','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'),reference_margin_left=left,reference_margin_right=right)
     return result
 
 

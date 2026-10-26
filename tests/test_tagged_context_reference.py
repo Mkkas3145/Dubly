@@ -139,7 +139,7 @@ def test_short_references_can_exceed_sixteen_until_thirty_seconds(tmp_path):
     assert segments[20]['_shared_reference_text'].count('<|speaker:1|>')==1
 
 
-def test_language_wrappers_follow_selected_languages_and_have_no_output_speaker():
+def test_reference_and_output_have_language_wrappers():
     from tagged_context_reference import request_texts
     assert request_texts('Hello.\n<|speaker:1|>Welcome. Another line.','こんにちは。','en','ja')==(
         '<english>Hello.</english> <|speaker:1|> <english>Welcome. Another line.</english>',
@@ -147,7 +147,7 @@ def test_language_wrappers_follow_selected_languages_and_have_no_output_speaker(
     assert request_texts('Hello.','안녕.','unknown','ko')==('Hello.','<korean>안녕.</korean>')
 
 
-def test_donor_language_tags_follow_audio_parts_even_with_multiline_dialogue():
+def test_donor_parts_preserve_multiline_text_with_language_tags():
     from tagged_context_reference import request_texts
     reference,output=request_texts('unused','안녕.','ja','ko',['今。','次。\n続き。','最後。'])
     assert reference=='<japanese>今。</japanese> <|speaker:1|> <japanese>次。\n続き。</japanese> <japanese>最後。</japanese>'

@@ -154,10 +154,11 @@ def test_whole_fish_to_translation_and_shared_reference_without_mai(tmp_path):
     same,_=refine_references(clean,result,tmp_path/'reference')
     assert same is result
 
-def test_production_dispatch_rejects_legacy_fish_mode(tmp_path):
+def test_production_dispatch_uses_fish_mode(tmp_path):
     from speech import transcribe
-    with pytest.raises(ValueError,match='Unsupported transcription pipeline'):
-        transcribe('audio',tmp_path,tmp_path/'result',{**config(),'diarizer':'fish-transcribe-1-pro'},lambda *a:None)
+    with patch('fish_pipeline.translate',return_value={'ok':True}) as analyze:
+        assert transcribe('audio',tmp_path,tmp_path/'result',{**config(),'diarizer':'fish-transcribe-1-pro'},lambda *a:None)=={'ok':True}
+    assert analyze.call_count==1
 
 
 def test_zero_duration_anchor_is_measured_without_fabricated_duration(tmp_path):
@@ -183,7 +184,7 @@ def test_zero_duration_token_does_not_enter_neighbor_voice():
 def test_default_individual_fish_pipeline_and_frozen_translation_contract():
     from fish_pipeline import fixed_translations
     cfg=config()
-    assert cfg['diarizer']=='gemini-native-audio'
+    assert cfg['diarizer']=='scribe-v2'
     assert cfg['tts_mode']=='individual' and cfg['tts_reference_mode']=='same_speaker_tagged_context'
     assert cfg['speaker_embeddings'] is False
     rows=[{'id':0}]

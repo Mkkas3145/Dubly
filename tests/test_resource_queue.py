@@ -174,3 +174,36 @@ def test_render_resource_context_does_not_wait_for_heavy_stage(tmp_path,monkeypa
  monkeypatch.setenv('DUBLY_VIDEO_ID','watch');monkeypatch.setenv('DUBLY_INDEPENDENT_RENDER','1')
  monkeypatch.setattr(resources,'_try_lock',lambda handle:(_ for _ in ()).throw(AssertionError('Render must not acquire heavy lock')))
  with resources.local_resources():pass
+
+
+def test_reset_resumes_waiting_queue_and_preserves_active_work_and_files(tmp_path):
+ store=Store(tmp_path)
+ for key in ['failed','active','waiting']:store.add(key,key+'.mp4')
+ store.update('failed',state='error',error='saved failure')
+ cached=tmp_path/'work/keep.txt';cached.write_text('keep')
+ entered=threading.Event();release=threading.Event();calls=[]
+ def process(job):
+  calls.append(job['id'])
+  if job['id']=='active':entered.set();release.wait(4)
+  store.update(job['id'],state='done')
+ queue=VideoQueue(store,process);queue.start();thread=queue.thread
+ try:
+  assert entered.wait(2)
+  queue.pause();queue.failure_id='failed'
+  queue.reset()
+  assert queue.thread is thread and queue.active_jobs['active'].is_alive()
+  assert not queue.stop_requested and queue.failure_id is None
+  assert store.get('failed')['state']=='error' and cached.read_text()=='keep'
+  release.set();thread.join(4)
+  assert calls==['active','waiting'] and store.get('waiting')['state']=='done'
+ finally:release.set();queue.stop();thread.join(4)
+
+
+def test_reset_endpoint_resumes_queue(tmp_path):
+ from unittest.mock import patch
+ from fastapi.testclient import TestClient
+ import app as api
+ store=Store(tmp_path);queue=VideoQueue(store)
+ with patch.object(api,'store',store),patch.object(api,'queue',queue),patch.object(queue,'reset') as reset,TestClient(api.app) as client:
+  assert client.post('/api/queue/reset').status_code==200
+  reset.assert_called_once_with()

@@ -228,7 +228,7 @@ def translate(clean,work,output,cfg,progress,*,source_loader=None,region_builder
     import speech
     work=Path(work);work.mkdir(parents=True,exist_ok=True)
     raw,source_identity=(source_loader or transcribe_source)(clean,Path(clean).parent/cache_directory,cfg['key'],progress)
-    label={'fish':'Fish','gemini':'Gemini','nemotron':'Nemotron + Fish'}.get(prefix,'MAI')
+    label={'scribe':'Scribe','fish':'Fish','gemini':'Gemini','nemotron':'Nemotron + Fish'}.get(prefix,'MAI')
     rows,audit=(boundary_builder or correct_edges)(clean,(region_builder or word_regions)(raw,sf.info(clean).duration),
         lambda p,d:progress(p,d.replace('MAI',label)))
     atomic_json(work/f'{prefix}-boundaries.json',{'rows':rows,'measurements':audit})

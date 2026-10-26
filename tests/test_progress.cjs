@@ -24,3 +24,13 @@ test('stage percentage uses backend stage progress independently of overall prog
 test('Qwen streamed region count is shown without exposing the model name',()=>{
  assert.equal(task({state:'running',phase:'2/4 전사',detail:'감정 전환·화자 보정 응답 수신 42/197개'}),'감정 전환·화자 보정 응답 수신 42/197개');
 });
+
+
+test('translation displays streamed completed lines and translation-only percentage',()=>{
+ const p=context.window.DublyProgress;
+ const job={state:'running',phase:'2/4 전체 음성 전사·번역',detail:'구간 번역 12/48개 수신 · 7초',phase_progress:61.25,progress:42};
+ assert.equal(p.task(job),'대사 번역 중 · 12/48개 수신');
+ assert.equal(p.stageText(job),'번역 · 25%');
+ assert.equal(p.stageText({...job,detail:'구간 번역 0/48개 수신 · 0초'}),'번역 · 0%');
+ assert.equal(p.stageText({...job,detail:'구간 번역 48/48개 수신 · 20초'}),'번역 · 100%');
+});

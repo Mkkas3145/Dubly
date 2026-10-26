@@ -40,7 +40,7 @@
   nav.addEventListener('focusout',e=>{if(!nav.contains(e.relatedTarget))close()});
   return nav;
  }
- const header=document.querySelector('header');if(header){const box=document.createElement('div');box.className='header-locale';const note=header.querySelector('.header-note');if(note)box.append(note);const share=header.querySelector('#share-open');if(share)box.append(share);box.append(picker());header.append(box);const links=header.querySelector('.header-links');if(links&&!links.children.length)links.remove()}
+ const header=document.querySelector('header');if(header){const box=document.createElement('div');box.className='header-locale';const note=header.querySelector('.header-note');if(note)box.append(note);const share=header.querySelector('#share-open');if(share)box.append(share);const reset=header.querySelector('#queue-reset');if(reset)box.append(reset);box.append(picker());header.append(box);const links=header.querySelector('.header-links');if(links&&!links.children.length)links.remove()}
  const loading=document.getElementById('loading-screen');if(loading){const box=picker();box.classList.add('loading-locale');loading.append(box)}
  const observer=new MutationObserver(records=>{for(const record of records){if(record.type==='childList')for(const node of record.addedNodes)scan(node);else translateNode(record.target)}});
  observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:attrs});set(locale);

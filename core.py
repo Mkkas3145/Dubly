@@ -7,14 +7,14 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parent
 SR = 44100
-GEMINI = 'google/gemini-4-argon'
+GEMINI = 'google/gemini-3.8-flash'
 QWEN = 'qwen/qwen3.8-omni-flash'
 FISH = 'fish-audio/drama-3'
 TTS_CONCURRENCY = 20
 FIT_CONCURRENCY = 40
 DEFAULT_SEPARATOR = 'mel-band-roformer-deux'
 DEFAULT_BACKGROUND = 'mel-band-roformer-deux'
-DEFAULT_DIARIZER = 'gemini-native-audio'
+DEFAULT_DIARIZER = 'scribe-v2'
 MODEL_HASH = '87201f4d31afb5bc79993230fc49446918425574db48c01c405e44f365c7559e'
 LANGUAGE_CATALOG=json.loads((ROOT/'assets/languages.json').read_text(encoding='utf8'))
 SOURCE_LANGUAGES=frozenset(LANGUAGE_CATALOG['source'])

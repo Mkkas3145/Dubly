@@ -49,6 +49,13 @@ class VideoQueue:
             self.thread=threading.Thread(target=self.run,daemon=True,name='video-queue')
             self.thread.start()
 
+    def reset(self):
+        """Resume queued work without cancelling active jobs or retrying failures."""
+        with self.lock:
+            # An older editor-only worker must also see the full waiting queue.
+            self.editor_only=False
+            self.start()
+
     def pause(self):
         with self.lock:
             self.stop_requested=True

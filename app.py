@@ -176,6 +176,12 @@ def start():
     return {'ok':True}
 
 
+@app.post('/api/queue/reset')
+def reset_queue():
+    queue.reset()
+    return {'ok':True}
+
+
 @app.post('/api/pause')
 def pause():
     queue.pause()

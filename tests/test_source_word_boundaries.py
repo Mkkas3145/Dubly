@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from rich_transcript import enrich,join_words
 from fish_pipeline import regions
 from source_word_boundaries import repair_japanese_boundaries
@@ -6,7 +7,8 @@ def test_character_gap_does_not_split_a_japanese_lexical_unit():
     text='何にも何にも変わってねえなお前は。'
     chars=list(text);times=[(i*.1,i*.1+.1) if i<4 else (2+i*.1,2+i*.1+.1) for i in range(len(chars))]
     raw={'text':text,'words':[{'word':c,'start':a,'end':b,'speaker':'0'} for c,(a,b) in zip(chars,times)]}
-    rows=[{**r,'id':i} for i,r in enumerate(regions(raw,6.))]
+    with patch('source_word_boundaries.repair_japanese_boundaries',side_effect=lambda rows,text:(rows,[])):
+        rows=[{**r,'id':i} for i,r in enumerate(regions(raw,6.))]
     old_times=[(r['start'],r['end']) for r in rows]
     repaired,audit=repair_japanese_boundaries(rows,text)
     assert repaired[0]['text']=='何にも'
@@ -30,7 +32,8 @@ def test_entire_rows_inside_one_word_merge_with_both_source_windows():
         {'word':'残','start':127.4,'end':127.42,'speaker':'0'},
         {'word':'念','start':128.479,'end':128.62,'speaker':'0'},
         {'word':'。','start':128.62,'end':128.62,'speaker':'0'}]}
-    rows=[{**r,'id':i} for i,r in enumerate(regions(raw,130.))]
+    with patch('source_word_boundaries.repair_japanese_boundaries',side_effect=lambda rows,text:(rows,[])):
+        rows=[{**r,'id':i} for i,r in enumerate(regions(raw,130.))]
     assert len(rows)==2
     repaired,audit=repair_japanese_boundaries(rows,raw['text'])
     assert len(repaired)==1 and repaired[0]['text']=='残念。'
@@ -46,3 +49,14 @@ def test_entire_lexical_fragments_in_different_voices_are_not_merged():
     rows=[{**r,'id':i} for i,r in enumerate(regions(raw,3.))]
     repaired,audit=repair_japanese_boundaries(rows,raw['text'])
     assert len(repaired)==2 and not audit
+
+
+def test_boundary_repair_accepts_rows_before_ids_are_assigned():
+    rows=[{'start':1.,'end':1.1,'speaker':'0','text':'残','words':[
+        {'word':'残','start':1.,'end':1.1,'source_char_start':0,'word_id':0}]},
+        {'start':2.,'end':2.2,'speaker':'0','text':'念。','words':[
+        {'word':'念。','start':2.,'end':2.2,'source_char_start':1,'word_id':1}]}]
+    repaired,audit=repair_japanese_boundaries(rows,'残念。')
+    assert len(repaired)==1 and repaired[0]['text']=='残念。'
+    assert repaired[0]['start']==1. and repaired[0]['end']==2.2
+    assert audit[0]['left_id']==0 and audit[0]['right_id']==1

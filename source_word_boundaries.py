@@ -18,7 +18,7 @@ def repair_japanese_boundaries(rows,text):
         if units and pos in ('助詞','助動詞','接尾辞') and units[-1][1]==start:
             units[-1]=(units[-1][0],end)
         elif pos not in ('補助記号','空白'):units.append((start,end))
-    result=[{**r,'words':[dict(w) for w in r.get('words',[])]} for r in rows];audit=[]
+    result=[{**r,'id':r.get('id',i),'words':[dict(w) for w in r.get('words',[])]} for i,r in enumerate(rows)];audit=[]
     for left,right in zip(result,result[1:]):
         if left['speaker']=='unknown' or left['speaker']!=right['speaker'] or not right['words']:continue
         boundary=right['words'][0].get('source_char_start')

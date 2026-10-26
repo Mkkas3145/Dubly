@@ -1,5 +1,11 @@
 /* Product progress copy: model names and worker internals stay in server logs. */
 (()=>{
+ function translationCount(job={}){
+  const match=(job.detail||'').match(/구간 번역 (\d+)\/(\d+)개 수신/);
+  if(!match||job.state!=='running')return null;
+  const total=Number(match[2]),done=Math.min(total,Number(match[1]));
+  return total>0?{done,total,percent:Math.round(done/total*100)}:null;
+ }
  function task(job={}){
   const state=job.state||'',phase=job.phase||'',detail=job.detail||'';
   if(state==='error')return '처리에 실패했습니다.';
@@ -14,7 +20,10 @@
   if(/TTS|번역 음성|음성 생성/.test(detail))return '더빙 음성 생성 중';
   if(/참조|임베딩|화자 검증/.test(detail))return '화자 음성 준비 중';
   if(/경계|파형 보정/.test(detail))return '대사 구간 정리 중';
+  const translated=translationCount(job);
+  if(translated)return `대사 번역 중 · ${translated.done}/${translated.total}개 수신`;
   if(/Gemini|번역/.test(detail))return '대사 번역 중';
+  if(/감정·말투 단서/.test(detail))return detail;
   if(/감정 전환·화자 보정 응답/.test(detail))return detail;
   if(/전사|단서|화자|Qwen|MAI|MOSS|Voxtral/.test(detail))return '대사와 화자 분석 중';
   if(/분리|오디오 추출|음원/.test(phase+' '+detail))return '음성 분리 중';
@@ -24,6 +33,7 @@
   return '스튜디오 준비 중';
  }
  function stage(job={}){
+  if(translationCount(job))return '번역';
   const phase=job.phase||'';
   if(/1\/4|분리/.test(phase))return '음성 분리';
   if(/2\/4|전사|번역/.test(phase))return '전사·번역';
@@ -33,6 +43,8 @@
   return '현재 단계';
  }
  function stagePercent(job={}){
+  const translated=translationCount(job);
+  if(translated)return translated.percent;
   if(['ready','done'].includes(job.state))return 100;
   if(['waiting','uploaded','queued'].includes(job.state)||job.phase==='준비')return 0;
   return typeof job.phase_progress==='number'&&Number.isFinite(job.phase_progress)?Math.round(Math.max(0,Math.min(100,job.phase_progress))):null;

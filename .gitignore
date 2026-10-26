@@ -56,3 +56,9 @@ desktop/**/obj/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Retired local captioning experiments
+procedural_delivery.py
+procedural_caption_worker.py
+install_procedural.py
+tests/test_procedural_delivery.py

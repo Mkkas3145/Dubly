@@ -6,12 +6,12 @@ import soundfile as sf
 from core import SR,atomic_json
 from rich_transcript import without_speakers
 
-POLICY={'version':30,'max_parts':None,'minimum_seconds':30.,'target_seconds':30.,
+POLICY={'version':35,'max_parts':None,'minimum_seconds':30.,'target_seconds':30.,
     'selection':'current_then_nearest_same_speaker_donors_in_source_order_no_repetition',
-    'reference_tags':'current_untagged_donors_single_speaker_1','output_tags':'language_only','language_tags':'per_dialogue',
+    'reference_tags':'current_untagged_donors_single_speaker_1','output_tags':'none','language_tags':'per_reference_part_and_output',
     'reference_gap_seconds':.5,'outer_silence_seconds':.5,
     'output_duration_hint':None,
-    'generation':'individual','instructions':'brief_reference_voice_acting_native_target_adaptation_v6'}
+    'generation':'individual','instructions':'native_speaker_pronunciation_intonation_stress_rhythm_reference_acting_v7'}
 
 
 def prepare(segments,clean,folder,only_indices=None):
@@ -60,16 +60,16 @@ def prepare(segments,clean,folder,only_indices=None):
             _shared_reference_indices=indices,_shared_reference_speaker=voice,
             _shared_reference_donor_tag=False,_shared_reference_output_tag=None,
             _preserve_reference_tags=True,_preserve_speaker_tags=False,_omit_instructions=False,
-            _reference_language_wrappers=True,_reference_language_parts=[part['text'] for part in parts])
+            _structured_instructions=True,_reference_language_wrappers=True,_reference_language_parts=[part['text'] for part in parts])
 
 
 
 def language_wrap(text,language):
-    from tts_prompt import language_code
     from core import LANGUAGE_CATALOG
+    from tts_prompt import language_code
     code=language_code(language)
-    if code is None:return text
-    tag=LANGUAGE_CATALOG['languages'][code]['labels']['en'].lower().replace(' ','_')
+    if not code:return text
+    tag=LANGUAGE_CATALOG['languages'][code]['name'].lower().replace(' ','_')
     return f'<{tag}>{text}</{tag}>'
 
 
@@ -80,5 +80,5 @@ def request_texts(reference_text,output_text,source_language,target_language,ref
         current,marker,tail=reference_text.partition('<|speaker:1|>')
         current=current.strip();donors=[tail.strip()] if marker else []
     reference=language_wrap(current,source_language)
-    if donors:reference+=' <|speaker:1|> '+' '.join(language_wrap(text,source_language) for text in donors)
+    if donors:reference+=' <|speaker:1|> '+' '.join(language_wrap(part,source_language) for part in donors)
     return reference,language_wrap(output_text,target_language)

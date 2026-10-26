@@ -37,7 +37,7 @@ def instructions(target,source=None):
     source_name=LANGUAGE_CATALOG['languages'][source_code]['labels']['en'] if source_code else None
     source_style=f'{source_name} pronunciation or intonation' if source_name else "the source language's pronunciation or intonation"
     exclude=f' Do not carry over {source_style}.' if source_code!=code or source_code is None else ''
-    return f'Dub in native {name}.'+exclude+f' Use natural {name} pronunciation and intonation. Natural adaptation into {name} is allowed.'
+    return f'Preserve the reference voice and acting. Sound like a native {name} speaker, with natural pronunciation, intonation, stress and rhythm.'+exclude+f' Natural adaptation into {name} is allowed.'
 
 
 def structured_instructions(target,source=None):
@@ -46,5 +46,5 @@ def structured_instructions(target,source=None):
     source_code=language_code(source);target_code=language_code(target)
     source_name=korean_language(source,'원본 언어의')
     exclude=f'{source_name} 발음·억양은 배제하고, ' if source_code is None or source_code!=target_code else ''
-    return (f'참조의 목소리와 연기를 모든 조건들을 충족하며 자연스러운 {name}로 말하세요. '
+    return (f'참조의 목소리와 연기를 유지하며, {name} 원어민이 말하는 것처럼 자연스러운 발음·억양·강세·리듬으로 더빙하세요. '
         +exclude+f'자연스러운 {name} 각색은 허용합니다.')

@@ -65,7 +65,8 @@ def main():
     def tree(source,destination,skip=()):
         for p in Path(source).rglob('*'):
             if p.is_file() and not any(part in ('__pycache__','.git','.pytest_cache','tests','test') for part in p.relative_to(source).parts) and p.suffix not in skip:add(p,Path(destination)/p.relative_to(source))
-    for p in APP.glob('*.py'):add(p,server/p.name)
+    for p in APP.glob('*.py'):
+        if p.name not in ('procedural_delivery.py','procedural_caption_worker.py','install_procedural.py'):add(p,server/p.name)
     for name in ('static','assets'):tree(APP/name,server/name)
     add(APP/'requirements.txt',server/'requirements.txt')
     tree(APP/'vendor/mel-band-roformer',server/'vendor/mel-band-roformer',('.ckpt','.pth'))

@@ -2,52 +2,51 @@ import io,json
 from unittest.mock import patch
 import numpy as np
 import soundfile as sf
-from core import config,SR
-from scribe_pipeline import transcribe
+from core import config,SR,GEMINI
+from speech import transcribe
 import scribe_pipeline as s
-import pytest
 
 
-def test_scribe_words_go_through_performance_review_before_translation(tmp_path):
+def test_production_uses_scribe_and_gemini_translation_only(tmp_path):
     clean=tmp_path/'voice.wav';sf.write(clean,np.zeros((3*SR,2)),SR)
-    raw={'text':'Hello, nice to meet you. Yes!','language_code':'en','words':[
-        {'text':'Hello,','start':.1,'end':.4,'speaker_id':'speaker_7','type':'word'},
-        {'text':'nice to meet you.','start':.6,'end':1.3,'speaker_id':'speaker_7','type':'word'},
-        {'text':'(music)','start':1.4,'end':1.5,'type':'audio_event'},
-        {'text':'Yes!','start':2.,'end':2.4,'speaker_id':'speaker_2','type':'word'}]}
-    def translate(payload,key,work,identity,ids,kind,progress):
-        context=json.loads(payload['messages'][1]['content'])
-        assert context[0]['text']=='Hello, nice to meet you.'
-        assert context[1]['text']=='Yes!'
-        assert 'Scribe ASR' in payload['messages'][0]['content']
-        return {'0':'안녕하세요, 반갑습니다.','1':'네!'},{'usage':{}}
-    cfg={**config(),'key':'test','language':'ko','diarizer':'scribe-v2'}
-    assert cfg['diarizer']=='scribe-v2' and not cfg['speaker_embeddings']
+    raw={'text':'Hello. Yes!','language_code':'en','words':[
+        {'text':'Hello.','start':.1,'end':.6,'speaker_id':'speaker_7'},
+        {'text':'Yes!','start':2.,'end':2.4,'speaker_id':'speaker_2'}]}
+    def translate(payload,key,**kwargs):
+        assert payload['model']==GEMINI=='google/gemini-3.8-flash'
+        content=payload['messages'][1]['content']
+        assert isinstance(content,str) and 'input_audio' not in json.dumps(payload)
+        context=json.loads(content)
+        assert [row['text'] for row in context['regions']]==['Hello.','Yes!']
+        assert [row['speaker'] for row in context['regions']]==['0','1']
+        schema=payload['response_format']['json_schema']['schema']
+        assert schema['required']==['0','1'] and schema['additionalProperties'] is False
+        return kwargs['parser']('{"0":"안녕.","1":"네!"}'),{}
+    cfg={**config(),'key':'test','language':'ko'}
+    assert cfg['diarizer']=='scribe-v2'
     with patch('scribe.urllib.request.urlopen',return_value=io.BytesIO(json.dumps(raw).encode())) as api, \
-         patch.object(s,'correct_fish_edges',side_effect=lambda clean,rows,progress:(rows,[])), \
-         patch.object(s,'review_performance',side_effect=lambda clean,rows,*a:(rows,{'requests':0,'changes':[]})), \
-         patch('qwen_punctuation.repair_source',side_effect=AssertionError('Qwen correction must not run')), \
-         patch('fish_qwen_pipeline.stage_chat',side_effect=translate) as gemini:
-        first=transcribe(clean,tmp_path/'work',tmp_path/'out.json',cfg,lambda *a:None)
-        second=transcribe(clean,tmp_path/'work',tmp_path/'out.json',cfg,lambda *a:None)
+         patch.object(s,'correct_fish_edges',side_effect=lambda clean,rows,*a:(rows,[])), \
+         patch('procedural_delivery.annotate',side_effect=AssertionError('No caption stage')) as captions, \
+         patch('speech.http_json',side_effect=translate) as gemini, \
+         patch('qwen_performance_turns.review',side_effect=AssertionError('Qwen must not be called')) as review, \
+         patch('gemini_source_pipeline.transcribe',side_effect=AssertionError('No Gemini audio transcription')):
+        result=transcribe(clean,tmp_path/'work',tmp_path/'out.json',cfg,lambda *a:None)
+        reused=transcribe(clean,tmp_path/'work',tmp_path/'out.json',cfg,lambda *a:None)
     assert api.call_count==gemini.call_count==1
     payload=json.loads(api.call_args.args[0].data)
     assert payload['model']=='elevenlabs/scribe-v2'
     assert payload['provider']['options']['elevenlabs']=={'diarize':True,'tag_audio_events':False}
-    assert first['source_languages']==['en']
-    assert first['models']['delivery_cues']==s.QWEN and first['delivery_cue_receipt']['requests']==0
-    assert first['models']['punctuation']==s.QWEN and 'punctuation_receipt' not in first
-    assert first['segments'][0]['original_text']=='Hello, nice to meet you.'
-    assert 'qwen_emotion_turns_speakers' in first['transcription_mode']
-    assert first['speaker_authority']=='qwen/qwen3.8-omni-flash'
-    assert first['native_speaker_mapping']==[{'native_id':'speaker_7','speaker_id':'0'},{'native_id':'speaker_2','speaker_id':'1'}]
-    assert first['request_counts']['source_asr_api']==1
-    assert second['request_counts']['source_asr_api']==0
-    assert first['boundary_authority']=='scribe_v2' and not first['llm_timestamps']
+    assert result['speaker_authority']=='elevenlabs/scribe-v2'
+    assert result['llm_audio_input'] is None and result['llm_timestamps'] is False
+    assert result['request_counts']['performance_review']==0
+    review.assert_not_called()
+    captions.assert_not_called()
+    assert result['request_counts']['delivery_cues']==0
+    assert reused['request_counts']['source_asr_api']==0
+    assert result['segments'][0]['original_text']=='Hello.'
+    assert result['segments'][1]['translated_text']=='네!'
     from reference_timing import refine_references
-    with patch('reference_timing.source_evidence',side_effect=AssertionError('No second ASR')):
-        same,_=refine_references(clean,first,tmp_path/'references')
-    assert same is first
+    assert refine_references(clean,result,tmp_path/'references')[0] is result
 
 
 def test_diarization_options_invalidate_plain_asr_cache(tmp_path):
@@ -62,7 +61,8 @@ def test_diarization_options_invalidate_plain_asr_cache(tmp_path):
     assert api.call_count==2 and result['language']=='ja'
 
 
-def test_corrected_gap_merge_happens_before_translation(tmp_path):
+
+def test_corrected_gap_merge_preserves_words_and_scribe_speakers(tmp_path):
     clean=tmp_path/'voice.wav';sf.write(clean,np.zeros((4*SR,2)),SR)
     raw={'text':'First. Second.','language_code':'en','words':[
         {'text':'First.','start':.2,'end':.5,'speaker_id':'speaker_0'},
@@ -70,74 +70,16 @@ def test_corrected_gap_merge_happens_before_translation(tmp_path):
     def correct(clean,rows,progress):
         assert len(rows)==2
         return [{**rows[0],'start':.1,'end':1.3},{**rows[1],'start':1.4,'end':2.6}],[]
-    def translate(payload,key,work,identity,ids,kind,progress):
+    def translate(payload,key,**kwargs):
         context=json.loads(payload['messages'][1]['content'])
-        assert ids==[0] and len(context)==1
-        assert 'First.' in context[0]['text'] and 'Second.' in context[0]['text']
-        return {'0':'Combined translation.'},{'usage':{}}
+        assert len(context['regions'])==1 and 'First.' in context['regions'][0]['text'] and 'Second.' in context['regions'][0]['text']
+        return kwargs['parser']('{"0":"합쳐진 번역."}'),{}
     with patch('scribe.urllib.request.urlopen',return_value=io.BytesIO(json.dumps(raw).encode())), \
          patch.object(s,'correct_fish_edges',side_effect=correct), \
-         patch('collapsed_source_onsets.repair',side_effect=lambda clean,rows,*a,**kw:(rows,[])), \
-         patch.object(s,'review_performance',side_effect=lambda clean,rows,*a:(rows,{'requests':0,'changes':[]})), \
-         patch('fish_qwen_pipeline.stage_chat',side_effect=translate):
-        result=s.transcribe(clean,tmp_path/'work',tmp_path/'out.json',
-            {**config(),'key':'test','language':'ko'},lambda *a:None)
-    assert len(result['segments'])==1
-    assert result['reference_windows'][0]['start']==.1
-    assert result['reference_windows'][0]['end']==2.6
-    assert result['corrected_source_gap_merges']
-
-
-def test_emotion_cuts_new_voices_and_nicknames_reach_translation_and_studio(tmp_path):
-    import qwen_performance_turns as performance
-    clean=tmp_path/'voice.wav';sf.write(clean,np.ones((2*SR,2))*.1,SR)
-    raw={'text':'Hello. No!','language_code':'en','words':[
-        {'text':'Hello.','start':.2,'end':.5,'speaker_id':'speaker_0'},
-        {'text':'No!','start':.7,'end':1.,'speaker_id':'speaker_0'}]}
-    def review(clean,rows,*args):
-        assert len(rows)==1
-        fixed=performance.fixed_rows(rows)
-        revised,changes=performance.apply(fixed,{'segments':[{'id':0,'parts':[
-            [0,0,0,'calm'],[1,1,27,'angry']]}]})
-        return revised,{'requests':1,'changes':changes,'speaker_names':{'0':'차분한 목소리','27':'거친 목소리'}}
-    def translate(payload,key,work,identity,ids,kind,progress):
-        context=json.loads(payload['messages'][1]['content'])
-        assert len(context)==2 and [r['speaker'] for r in context]==['0','27']
-        assert [r['text'] for r in context]==['Hello.','No!']
-        return {'0':'안녕.','1':'안 돼!'},{'usage':{}}
-    with patch('scribe.urllib.request.urlopen',return_value=io.BytesIO(json.dumps(raw).encode())), \
-         patch.object(s,'correct_fish_edges',side_effect=lambda clean,rows,*a:(rows,[])), \
-         patch('collapsed_source_onsets.repair',side_effect=lambda clean,rows,*a,**kw:(rows,[])), \
-         patch.object(s,'review_performance',side_effect=review), \
-         patch('fish_qwen_pipeline.stage_chat',side_effect=translate):
+         patch('procedural_delivery.annotate',side_effect=AssertionError('No caption stage')) as captions, \
+         patch('speech.http_json',side_effect=translate), \
+         patch('qwen_performance_turns.review',side_effect=AssertionError('Qwen must not be called')):
         result=s.transcribe(clean,tmp_path/'work',tmp_path/'out.json',{**config(),'key':'test','language':'ko'},lambda *a:None)
-    assert len(result['segments'])==2
-    assert [r['speaker_id'] for r in result['segments']]==['0','27']
-    assert result['speaker_names']=={'0':'차분한 목소리','27':'거친 목소리'}
-    assert [r['start'] for r in result['reference_windows']]==[.2,.7]
-    assert result['request_counts']['performance_review']==1
-    assert not result['llm_timestamps']
-
-
-def test_sentence_and_internal_cues_reach_translation_without_timing_or_speaker_changes(tmp_path,monkeypatch):
- from moss_pipeline import transcribe as translate
- clean=tmp_path/'voice.wav';sf.write(clean,np.ones((2*SR,2))*.1,SR)
- raw={'model':s.MODEL,'language':'en','signature':{'policy':{}},'segments':[{'id':0,'start':.2,'end':1.5,'speaker':'0','text':'Hello. No!'}], 'native_speaker_mapping':[], 'source_word_boundary_repairs':[],'words':[]}
- monkeypatch.setattr(s,'source',lambda *a:raw)
- monkeypatch.setattr(s,'correct_fish_edges',lambda clean,rows,*a:(rows,[]))
- monkeypatch.setattr(s,'review_performance',lambda clean,rows,*a:(rows,{'requests':0,'changes':[]}))
- monkeypatch.setattr('collapsed_source_onsets.repair',lambda clean,rows,*a,**kw:(rows,[]))
- def review_with_cues(clean,rows,*a):return [{**rows[0],'text':'[warm] Hello. [firm] No!'}],{'requests':1,'changes':[]}
- monkeypatch.setattr(s,'review_performance',review_with_cues)
- def response(payload,*a):
-  assert json.loads(payload['messages'][1]['content'])[0]['text']=='[warm] Hello. [firm] No!'
-  return {'0':'[warm] 안녕. [firm] 안 돼!'},{'usage':{}}
- monkeypatch.setattr('fish_qwen_pipeline.stage_chat',response)
- result=s.transcribe(clean,tmp_path/'work',tmp_path/'out.json',{**config(),'key':'test','language':'ko'},lambda *a:None)
- row=result['segments'][0]
- assert row['original_text']=='[warm] Hello. [firm] No!'
- assert row['translated_text']=='[warm] 안녕. [firm] 안 돼!'
- assert (row['start'],row['end'],row['speaker_id'])==(.2,1.5,'0')
- assert result['request_counts']['delivery_cues']==0
- assert result['delivery_cue_receipt']['shared_with']=='performance_review'
- assert result['request_counts']['performance_review']==1
+    assert len(result['segments'])==1
+    assert result['reference_windows'][0]['start']==.1 and result['reference_windows'][0]['end']==2.6
+    assert result['corrected_source_gap_merges']

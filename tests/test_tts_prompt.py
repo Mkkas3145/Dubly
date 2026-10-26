@@ -8,12 +8,12 @@ import render
 
 
 def test_english_prompt_uses_source_and_target_pronunciation_names():
-    assert instructions('ko','jpn')==('Dub in native Korean. Do not carry over Japanese pronunciation or intonation. '
-        'Use natural Korean pronunciation and intonation. Natural adaptation into Korean is allowed.')
+    assert instructions('ko','jpn')==('Preserve the reference voice and acting. Sound like a native Korean speaker, with natural pronunciation, intonation, stress and rhythm. '
+        'Do not carry over Japanese pronunciation or intonation. Natural adaptation into Korean is allowed.')
     assert 'Do not carry over English' in instructions('ja','eng')
-    assert 'Use natural Japanese' in instructions('ja','eng')
+    assert 'native Japanese speaker' in instructions('ja','eng')
     assert 'Do not carry over Korean' in instructions('fr','ko-KR')
-    assert 'Use natural French' in instructions('fr','ko-KR')
+    assert 'native French speaker' in instructions('fr','ko-KR')
     assert "the source language's pronunciation" in instructions('en',None)
     assert 'Japanese' not in instructions('en',None)
     assert 'Do not carry over' not in instructions('en','eng')
@@ -52,9 +52,9 @@ def test_structured_prompt_preserves_reference_acting_and_uses_selected_language
     from tts_prompt import structured_instructions
     for target in TARGET_LANGUAGES:
         prompt=structured_instructions(target,'ja')
-        assert '모든 조건들을 충족하며' in prompt and '목소리와 연기' in prompt
+        assert '원어민이 말하는 것처럼' in prompt and '목소리와 연기' in prompt
         assert '각색은 허용합니다.' in prompt
-    assert structured_instructions('ko','ja')==('참조의 목소리와 연기를 모든 조건들을 충족하며 자연스러운 한국어로 말하세요. '
+    assert structured_instructions('ko','ja')==('참조의 목소리와 연기를 유지하며, 한국어 원어민이 말하는 것처럼 자연스러운 발음·억양·강세·리듬으로 더빙하세요. '
         '일본어 발음·억양은 배제하고, 자연스러운 한국어 각색은 허용합니다.')
     assert '영어 발음·억양은 배제하고' in structured_instructions('ja','en')
     assert '자연스러운 일본어 각색은 허용합니다.' in structured_instructions('ja','en')

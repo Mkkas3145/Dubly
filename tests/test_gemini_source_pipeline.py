@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 from core import config,SR,GEMINI
-from speech import transcribe
+from gemini_source_pipeline import transcribe
 from gemini_source_pipeline import parse,AUTHORITY
 
 
@@ -28,7 +28,7 @@ def test_native_audio_pipeline_no_external_asr_and_cache_reuse(tmp_path):
         assert 'translated_text' in schema['schema']['properties']['segments']['items']['required']
         return kwargs['parser'](json.dumps(answer())),{'cost':.001}
     cfg={**config(),'key':'test','language':'ko'}
-    assert cfg['diarizer']=='gemini-native-audio'
+    assert cfg['diarizer']=='scribe-v2'
     with patch('scribe.prepare_input',return_value=(clean,'wav',1.)), \
          patch('speech.http_json',side_effect=api), \
          patch('scribe.transcribe_words',side_effect=AssertionError('No ASR')), \

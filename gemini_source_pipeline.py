@@ -6,8 +6,9 @@ from core import GEMINI,LANGUAGES,SR,atomic_json
 
 MODEL=GEMINI
 AUTHORITY='gemini_native_audio'
-POLICY={'version':3,'model':MODEL,'input':'whole_separated_dialogue_original_clock',
+POLICY={'version':4,'model':MODEL,'input':'whole_separated_dialogue_original_clock',
     'tasks':['transcription','translation','acting_cues','speakers','nicknames','timestamps'],
+    'timestamp_origin':'attached_file_start_not_first_speech','preserve_leading_silence':True,
     'requests':'one_audio_request_all_tasks','transcript_input':False,'separate_translation_request':False,
     'external_asr':False,'speaker_count_limit':None,'cue_language':'English',
     'nicknames':'target_language','cue_evidence':'audible_vocal_execution_only_no_semantic_or_scene_inference','boundaries':'gemini_audio_times_then_local_waveform_edges',
@@ -19,7 +20,7 @@ AFTER deciding voice identities, give every identified speaker a distinct useful
 Put English [acting/delivery cues] directly into EVERY segment's original_text and at meaningful changes within a segment. Translate spoken words naturally into TARGET_LANGUAGE, preserving meaning, names, expressive punctuation, hesitation and unfinished phrases. Copy each English cue verbatim to the corresponding position in translated_text, including mid-sentence changes. Do not translate bracket contents or invent cues for the translation. Return translated_text:null only for a purely nonverbal/background sound needing no dubbing; meaningful short replies must have translations. Describe both communicative intent AND the actual audible vocal execution: loudness, pitch and contour, pace, rhythm, articulation, softness/roughness/strain, tremor, breath, hesitation, pauses and changes over the line, as applicable. Do not reduce rich audible performance to one or two generic emotion/intent labels; describe all salient audible traits without inventing or exaggerating them. Do not output separate redundant cue explanations.
 ACTING CUE EVIDENCE IS AUDIO ONLY. Do NOT derive emotion, intent, attitude, loudness or delivery tags from dialogue meaning, translation, plot, inferred relationships, scene expectations, or how an actor ought to say the words. Semantic context may help decipher words and create display nicknames, but it is NEVER evidence for an acting cue. Describe what is actually heard, not what the sentence suggests. Threatening words spoken softly must retain the audible softness; sad content spoken evenly must not acquire crying or sadness tags. An intent label is allowed only when audible prosody or vocal behavior supports it, alongside the actual vocal execution. Do not infer movements, facial expressions or off-screen events. Re-listen to each span before tagging; omit any uncertain trait and use a plain acoustic description rather than guessing an emotion. A mandatory cue is NOT permission to invent emotion: audibly neutral/even delivery should be described as such.
 Always split at a real speaker change. Within one speaker prefer inline cues for ordinary emotional or flow changes. Split only at a completed meaningful phrase boundary or when cues alone are unlikely to reproduce the performance faithfully and separate local reference segments are needed. Never split inside a word, a number, a name or a dependent ending. Keep a tiny dependent fragment or hesitation with its same-speaker continuation; preserve independent brief answers. Do not force an unrelated completed sentence to merge just because it is short.
-Return source_language as an ISO language code, speakers as id/nickname records, and segments in audio order. Each segment has start/end in seconds from the beginning of this exact audio, speaker ID (or null), and original_text plus translated_text with inline English cues. Cover the complete audible onset and ending, including weak consonants, without including another speaker. Do not reset the clock at pauses. Stay within AUDIO_DURATION_SECONDS. Return only the requested JSON, no analysis or prose. Empty segments are allowed only if there is no intelligible speech."""
+Return source_language as an ISO language code, speakers as id/nickname records, and segments in audio order. Each segment has start/end in seconds from the beginning of this exact audio, speaker ID (or null), and original_text plus translated_text with inline English cues. Cover the complete audible onset and ending, including weak consonants, without including another speaker. TIMESTAMP CLOCK: Both start and end MUST be absolute playback positions in the ATTACHED AUDIO FILE, in decimal seconds. File playback 00:00.000 is time zero, NOT the first detected word, the first voice, or the first dialogue. Count ALL leading silence, background-only spans, breaths, music and gaps as elapsed time. Never subtract the first speech onset, compress silent intervals, or reset the clock for a new scene, speaker or segment. For example, if the file has 12.4 seconds before the first utterance and that utterance ends at file position 15.1 seconds, return start:12.4, end:15.1; NEVER start:0, end:2.7. The example is illustrative, not a supplied speech locator. Locate each utterance against the original file playback timeline and verify BOTH its start and end by listening at those positions. Do not estimate subsequent boundaries by accumulating spoken durations. Do not reset the clock at pauses. Stay within AUDIO_DURATION_SECONDS. Return only the requested JSON, no analysis or prose. Empty segments are allowed only if there is no intelligible speech."""
 
 
 def response_format(duration):
@@ -30,8 +31,8 @@ def response_format(duration):
                 'properties':{'id':{'type':'integer','minimum':0},'nickname':{'type':'string','minLength':1,'maxLength':64}},
                 'required':['id','nickname']}},
             'segments':{'type':'array','items':{'type':'object','additionalProperties':False,
-                'properties':{'start':{'type':'number','minimum':0,'maximum':duration},
-                    'end':{'type':'number','minimum':0,'maximum':duration},'speaker':voice,
+                'properties':{'start':{'type':'number','minimum':0,'maximum':duration,'description':'Absolute onset position in seconds from attached file playback 00:00, including all leading silence; never relative to first speech.'},
+                    'end':{'type':'number','minimum':0,'maximum':duration,'description':'Absolute ending position on the same attached-file playback clock as start; not utterance duration.'},'speaker':voice,
                     'original_text':{'type':'string','minLength':1},
                     'translated_text':{'type':['string','null']}},'required':['start','end','speaker','original_text','translated_text']}}},
         'required':['source_language','speakers','segments']}
@@ -81,7 +82,9 @@ def source(clean,folder,cfg,progress):
     with clean.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
     duration=sf.info(clean).duration
     context={'TARGET_LANGUAGE':LANGUAGES[cfg['language']],'SOURCE_LANGUAGE_HINT':cfg.get('source_language'),
-        'AUDIO_DURATION_SECONDS':duration,'TIMESTAMP_ORIGIN_SECONDS':0}
+        'AUDIO_DURATION_SECONDS':duration,'TIMESTAMP_ORIGIN_SECONDS':0,
+        'TIMESTAMP_ORIGIN':'attached_audio_file_playback_start_NOT_first_speech',
+        'TIMESTAMP_UNITS':'absolute_seconds_including_all_leading_silence_and_gaps'}
     signature={'policy':POLICY,'audio_sha256':digest,'context':context,'prompt':PROMPT}
     cache=folder/'source.json'
     if cache.exists():

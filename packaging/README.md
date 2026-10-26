@@ -16,3 +16,5 @@ The builder copies only selected runtimes/models and application source. API key
 
 The optional launcher smoke check uses an unused local port and a placeholder API key:
 `Dubly.exe --smoke-test <report.json> <port>`
+
+For GitHub Releases, add `/DGitHubRelease=1` to the ISCC command. This produces an EXE and companion BIN files, each below the release asset limit. Download all files into the same folder before running the EXE.

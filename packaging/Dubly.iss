@@ -21,6 +21,11 @@ OutputDir={#OutputDir}
 OutputBaseFilename=Dubly-Setup-0.1.0-win-x64
 SetupIconFile=..\desktop\Dubly.Launcher\app.ico
 UninstallDisplayIcon={app}\Dubly.exe
+#ifdef GitHubRelease
+DiskSpanning=yes
+DiskSliceSize=1900000000
+SlicesPerDisk=1
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 LZMAUseSeparateProcess=yes

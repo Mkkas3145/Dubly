@@ -112,7 +112,8 @@ def main():
         for name in pe_imports(binary):
             if name.startswith(('cublas','cufft','curand','cusolver','cusparse','cudart','nvrtc','nvjitlink')) and name in shared:reused.add(name);continue
             if name in available and str(available[name]).lower() not in seen:queue.append(available[name])
-    for name in ('LICENSE','README.md'):
+    tree(APP/'packaging/licenses',out/'licenses')
+    for name in ('LICENSE','README.md','THIRD_PARTY_NOTICES.md'):
         if (APP/name).is_file():add(APP/name,out/name)
     for p in (APP/'work/desktop-publish').glob('*'):
         if p.is_file() and p.suffix!='.pdb':add(p,out/p.name)

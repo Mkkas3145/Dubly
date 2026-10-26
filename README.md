@@ -2,16 +2,16 @@
 
 # Dubly
 
-### 목소리와 연기는 그대로, 언어는 새롭게.
+### Same voice. New language.
 
-OpenRouter API를 사용하는 다국어 AI 영상 더빙 도구입니다.
+Multilingual AI video dubbing powered by the OpenRouter API.
 
 </div>
 
 ---
 
-- **자연스러운 더빙** — 참조 음성의 목소리와 감정을 살려 다른 언어로 전달합니다.
-- **편리한 편집** — 대사와 파형을 보며 수정하고, 원하는 대사만 다시 생성하세요.
-- **끊김 없는 감상** — 나뉜 영상은 재생목록으로 이어 보고, 공유 코드로 다른 컴퓨터에서도 불러오세요.
+- **Expressive dubbing** — Preserve the reference voice and emotion across languages.
+- **Easy editing** — Edit dialogue alongside waveforms and regenerate individual lines.
+- **Seamless viewing** — Watch split videos as a playlist and access them on another computer with a sharing code.
 
-영상 업로드부터 전사, 번역, 음성 생성, MP4 내보내기까지 한곳에서.
+Upload, transcribe, translate, generate speech, and export MP4 — all in one place.

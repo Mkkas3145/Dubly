@@ -6,6 +6,8 @@
 
 Multilingual AI video dubbing powered by the OpenRouter API.
 
+[Download for Windows](https://github.com/Mkkas3145/Dubly/releases/latest)
+
 </div>
 
 ---

@@ -47,7 +47,17 @@ def patch(source,destination,build):
         p+=n
     field=p+18*4
     assert struct.unpack_from('<IIH',raw,field)==(0,(10<<24)|22000,0),'Unexpected original Windows requirement'
-    updated=bytearray(raw);struct.pack_into('<I',updated,field+4,(10<<24)|build)
+    counts=struct.unpack_from('<18I',raw,p)
+    # Inno inherits the global version into every installable entry. Updating
+    # only SetupHeader lets Setup start but silently skips all files on Win10.
+    old_gate=struct.pack('<IIH',0,(10<<24)|22000,0)
+    new_gate=struct.pack('<IIH',0,(10<<24)|build,0)
+    entry_indices=(3,4,5,6,8,10,11,12,13,14,15,16)
+    expected=1+sum(counts[i] for i in entry_indices)
+    assert raw.count(old_gate)==expected,'Unexpected version gates in metadata'
+    updated=raw.replace(old_gate,new_gate)
+    assert updated.count(old_gate)==0 and updated.count(new_gate)==expected
+    print('Updated setup and entry version gates:',expected)
     properties=bytes([(filters[0]['pb']*5+filters[0]['lp'])*9+filters[0]['lc']])+struct.pack('<I',filters[0]['dict_size'])
     encoded=properties+lzma.compress(bytes(updated),format=lzma.FORMAT_RAW,filters=filters)
     chunks=b''.join(struct.pack('<I',zlib.crc32(encoded[i:i+4096]))+encoded[i:i+4096] for i in range(0,len(encoded),4096))

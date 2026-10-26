@@ -69,3 +69,34 @@ def test_fenced_response_preserves_unknown_voice_and_inline_cue_changes():
     result=parse('```json\n'+json.dumps(data)+'\n```',1.)
     assert result['segments'][0]['speaker']=='unknown'
     assert result['segments'][0]['text']==data['segments'][0]['original_text']
+
+
+def test_streamed_dialogue_count_and_audio_coverage_update_before_completion(tmp_path):
+    import io
+    import speech
+    from gemini_source_pipeline import source
+    clean=tmp_path/'voice.wav';sf.write(clean,np.zeros((SR,2),np.float32),SR)
+    data=answer()
+    first,second=[json.dumps(row,ensure_ascii=False) for row in data['segments']]
+    fragments=['{"source_language":"ja","speakers":'+json.dumps(data['speakers'])+',"segments":[',
+        first[:-1],'},',second,']}']
+    chunks=[]
+    for fragment in fragments:
+        chunks.append('data: '+json.dumps({'choices':[{'delta':{'content':fragment}}]})+'\n\n')
+    chunks.append('data: '+json.dumps({'choices':[{'delta':{},'finish_reason':'stop'}]})+'\n\n')
+    chunks.append('data: [DONE]\n\n')
+    updates=[]
+    with patch('scribe.prepare_input',return_value=(clean,'wav',1.)), \
+         patch('speech.urllib.request.urlopen',return_value=io.BytesIO(''.join(chunks).encode())), \
+         patch('speech.time.monotonic',return_value=10.):
+        result=source(clean,tmp_path/'source',{**config(),'key':'test'},lambda p,d:updates.append((p,d)))
+    one=[p for p,d in updates if '1개 대사 수신' in d]
+    two=[p for p,d in updates if '2개 대사 수신' in d]
+    assert one and two and 0<one[0]<two[0]<100
+    assert updates[-1][0]==100 and len(result['segments'])==2
+    assert any('00:00 / 00:01' in d for _,d in updates)
+    counter=speech.SegmentStreamCounter()
+    assert counter.feed('{"segments":['+first[:-1])==0
+    assert counter.completed_audio_end==0
+    assert counter.feed('}')==1
+    assert counter.completed_audio_end==pytest.approx(.45)

@@ -91,7 +91,7 @@ class StreamingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary)
             with patch.object(speech.urllib.request,'urlopen',return_value=sse(['{"segments":['],finish=None)):
-                with self.assertRaisesRegex(RuntimeError,'완성되지'):
+                with self.assertRaisesRegex(RuntimeError,'response is incomplete'):
                     speech.http_json({},'test',folder,lambda count:None)
             self.assertTrue(list(folder.glob('*.sse')))
 

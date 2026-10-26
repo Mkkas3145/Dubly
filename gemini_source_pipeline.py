@@ -100,9 +100,21 @@ def source(clean,folder,cfg,progress):
     manifest={'path':str(audio),'format':format,'sample_rate':sf.info(audio).samplerate,
         'channels':sf.info(audio).channels,'duration_seconds':duration,'original_clock':True}
     atomic_json(folder/'audio-input.json',manifest)
+    def live_progress(event):
+        count=event.get('received_segments',0)
+        position=min(duration,max(0.,event.get('completed_audio_end',0.)))
+        fraction=min(.99,position/duration) if duration else 0.
+        elapsed=round(event.get('elapsed_seconds',0))
+        def clock(seconds):
+            total=int(seconds)
+            return f'{total//60:02d}:{total%60:02d}'
+        detail=f'Gemini {count}개 대사 수신 · {clock(position)} / {clock(duration)} · {elapsed}초 경과'
+        # This is response coverage on the audio clock, not a hidden model
+        # inference percentage. Completion is reported only after validation.
+        progress(5+90*fraction,detail)
     parsed,usage=speech.http_json(payload,cfg['key'],response_directory=folder/'responses',
         parser=lambda content:parse(content,duration),
-        on_segments=lambda n:progress(5,f'Gemini 전사·번역·감정 단서·화자·별명 · {n}개 대사 수신'))
+        on_segments=lambda n:None,on_activity=live_progress)
     result={**parsed,'model':MODEL,'signature':signature,'usage':usage,'audio_input':manifest}
     record_auto_language(result,cfg)
     atomic_json(cache,result);progress(100,f'Gemini {len(parsed["segments"])}개 대사 분석 완료')

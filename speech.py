@@ -217,7 +217,7 @@ def speaker_entry(value):return speaker_pair(value) is not None
 class SegmentStreamCounter:
     """Count only complete objects in the segments array, never partial text."""
     def __init__(self,expected_region_ids=None):
-        self.text='';self.cursor=None;self.count=0;self.done=False;self.numbered=False
+        self.text='';self.cursor=None;self.count=0;self.done=False;self.numbered=False;self.completed_audio_end=0.
         self.allowed=None if expected_region_ids is None else {str(i) for i in expected_region_ids}
         self.seen=set();self.rejected_keys=[];self.duplicate_keys=[];self.unrecognized_region_ids=set()
 
@@ -273,18 +273,24 @@ class SegmentStreamCounter:
                     if key in self.seen:self.duplicate_keys.append(key);continue
                     self.seen.add(key)
                 self.count+=1
+                if isinstance(value,dict):
+                    import math
+                    start,stop=value.get('start'),value.get('end')
+                    if (type(start) in (int,float) and type(stop) in (int,float)
+                        and math.isfinite(start) and math.isfinite(stop) and 0<=start<stop):
+                        self.completed_audio_end=max(self.completed_audio_end,float(stop))
         return self.count
 
 
 def read_stream(response,on_segments,record=None,on_activity=None,expected_region_ids=None):
     counter=SegmentStreamCounter(expected_region_ids);fragments=[];finish=None;native_finish=None;choice_error=None;usage={};metadata={};event=[];reported=0
     started=time.monotonic();last_notice=-1e9;last_stage=None
-    def activity(stage):
+    def activity(stage,force=False):
         nonlocal last_notice,last_stage
         now=time.monotonic()
-        if on_activity is not None and (stage!=last_stage or now-last_notice>=5):
+        if on_activity is not None and (force or stage!=last_stage or now-last_notice>=5):
             on_activity({'stage':stage,'elapsed_seconds':round(now-started,1),
-                'received_segments':counter.count,'content_characters':sum(map(len,fragments)),
+                'received_segments':counter.count,'completed_audio_end':counter.completed_audio_end,'content_characters':sum(map(len,fragments)),
                 'unrecognized_response_regions':len(counter.unrecognized_region_ids)})
             last_notice=now;last_stage=stage
     activity('connected')
@@ -303,8 +309,9 @@ def read_stream(response,on_segments,record=None,on_activity=None,expected_regio
             fragment=choice.get('delta',{}).get('content') or ''
             if fragment:
                 fragments.append(fragment);count=counter.feed(fragment)
-                if count!=reported:reported=count;on_segments(count)
-                activity('content')
+                changed=count!=reported
+                if changed:reported=count;on_segments(count)
+                activity('content',force=changed)
             if choice.get('finish_reason'):finish=choice['finish_reason']
             if choice.get('native_finish_reason'):native_finish=choice['native_finish_reason']
             if choice.get('error'):choice_error=choice['error']
@@ -319,6 +326,7 @@ def read_stream(response,on_segments,record=None,on_activity=None,expected_regio
             data=json.loads(raw+remaining)
             content=data.get('choices',[{}])[0].get('message',{}).get('content','')
             on_segments(counter.feed(content))
+            activity('content',force=True)
             return data
         if not line:
             if consume():break

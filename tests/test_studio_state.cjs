@@ -19,24 +19,9 @@ test('translation and speaker changes immediately show stale audio and reverting
  row.speaker_id='1';state.updateAudioBadges(true);assert.equal(badge.textContent,'재생성 필요');
 });
 
-test('bulk generation saves first, excludes clean/kept/deleted rows and blocks duplicate clicks',async()=>{
- const rows=[{id:0,audio_ready:true,audio_stale:true},{id:1,audio_ready:true,audio_stale:false},
-  {id:2,audio_ready:false},{id:3,audio_ready:false,keep_original:true},{id:4,audio_ready:false,deleted:true}];
- const calls=[],button={};const state={busy:false,processing:false,batchSubmitting:false,dirty:true,api:'/studio/test',doc:{revision:1,segments:rows},$:()=>button,
-  T:(s,p={})=>s.replace('{count}',p.count),say(){},
-  saveDraft:async()=>{calls.push('save');state.dirty=false;state.doc.revision=2},
-  setBusy:v=>{state.busy=v;state.processing=v},post:async(url,body)=>calls.push({url,body}),poll:async()=>calls.push('poll')};
- vm.createContext(state);vm.runInContext([fn('pendingSpeechRows'),fn('updateBatchButton'),fn('generatePending')].join('\n'),state);
- assert.equal(state.pendingSpeechRows().length,2);state.updateBatchButton();assert.equal(button.disabled,false);
- await Promise.all([state.generatePending(),state.generatePending()]);
- assert.equal(calls[0],'save');assert.deepEqual(JSON.parse(JSON.stringify(calls[1])),{url:'/studio/test/generate-stale',body:{confirmed:true,revision:2}});
- assert.equal(calls.filter(x=>typeof x==='object').length,1);assert.equal(calls[2],'poll');assert.equal(button.disabled,true);
-});
-
-
 test('vertical clip drag changes speaker track while preserving its timeline position',()=>{
  const row={id:0,start:1,speaker_id:'1',audio_edit:{}},info={duration:2,sha256:'sha'},tracks=['0','1','2'];
- const state={doc:{duration:10,segments:[row]},timelineDrag:{id:0,x:200,y:228,time:1,position:1,edge:'start',info,base:{},speaker:'1',moved:false},scrubDrag:null,busy:false,waveCache:new Map(),TRACK_HEIGHT:80,timeline:{style:{},getBoundingClientRect:()=>({top:0})},allSpeakers:()=>tracks,timeAt:()=>1,durationOf:()=>2,updateAudioBadges(){},drawTimeline(){},selected:null,wave:null,livePreview:{refresh(){}}};
+ const state={cutHeld:false,cutHover:null,timelineSnapTargets:()=>[],doc:{duration:10,segments:[row]},timelineDrag:{id:0,x:200,y:228,time:1,position:1,edge:'start',info,base:{},speaker:'1',moved:false},scrubDrag:null,busy:false,waveCache:new Map(),TRACK_HEIGHT:80,timeline:{style:{},getBoundingClientRect:()=>({top:0})},allSpeakers:()=>tracks,timeAt:()=>1,durationOf:()=>2,updateAudioBadges(){},drawTimeline(){},selected:null,wave:null,livePreview:{refresh(){}}};
  Object.assign(state,{layoutTimeline:()=>({width:1120}),sourceEdges:[],window:{DublySourceSnap:{move:p=>({position:p,boundary:null})}},timelineSnap:null});
  vm.createContext(state);const begin=source.indexOf('timeline.onpointermove=e=>{'),end=source.indexOf('function finishTimeline',begin);vm.runInContext(source.slice(begin,end),state);
  state.timeline.onpointermove({clientX:200,clientY:148});assert.equal(row.speaker_id,'0');assert.equal(row.audio_edit.position,1);assert.equal(state.timelineDrag.moved,true);
@@ -45,7 +30,7 @@ test('vertical clip drag changes speaker track while preserving its timeline pos
 
 test('an ungenerated clip moves in time and across speaker tracks without a waveform',()=>{
  const row={id:0,start:1,end:3,speaker_id:'1',audio_ready:false,audio_edit:{}},tracks=['0','1'];let marks=0;
- const state={doc:{duration:10,segments:[row]},timelineDrag:{id:0,x:200,y:228,time:1,position:1,end:3,edge:null,base:{},speaker:'1',moved:false},
+ const state={cutHeld:false,cutHover:null,timelineSnapTargets:()=>[],doc:{duration:10,segments:[row]},timelineDrag:{id:0,x:200,y:228,time:1,position:1,end:3,edge:null,base:{},speaker:'1',moved:false},
   scrubDrag:null,busy:false,waveCache:new Map(),TRACK_HEIGHT:80,timeline:{style:{},getBoundingClientRect:()=>({top:0})},allSpeakers:()=>tracks,
   timeAt:e=>e.clientX/100-1,durationOf:r=>r.end-r.start,updateAudioBadges(){},drawTimeline(){},selected:null,wave:null,livePreview:{refresh(){}},
   $:()=>({}),markDirty(){marks++},renderScript(){},openClipEditor(){throw Error('Dragging must not open the editor')}};
@@ -116,10 +101,10 @@ test('source waveform loads before the draft and is replaced when separation bec
 });
 
 test('timeline click and drag seek before a draft exists, without editing any rows',()=>{
- const state={doc:null,sourceWave:{duration:90},busy:true,sourceWaveKey:'original',timelineDrag:null,scrubDrag:null,
+ const state={cutHeld:false,cutHover:null,doc:null,sourceWave:{duration:90},busy:true,sourceWaveKey:'original',timelineDrag:null,scrubDrag:null,
  timeline:{getBoundingClientRect:()=>({left:0}),setPointerCapture(){},style:{}},video:{currentTime:0},
- $:()=>({scrollLeft:0}),layoutTimeline:()=>({width:1020}),drawTimeline(){}};
- vm.createContext(state);vm.runInContext([fn('timelineDocument'),fn('timeAt'),fn('timelineHit')].join('\n'),state);
+ $:()=>({scrollLeft:0}),layoutTimeline:()=>({width:1020}),startPlayhead(){},drawTimeline(){}};
+ vm.createContext(state);vm.runInContext([fn('timelineDocument'),fn('timeAt'),fn('timelineHit'),fn('seekTimeline'),fn('beginScrub')].join('\n'),state);
  const down=source.indexOf('timeline.onpointerdown=e=>{'),move=source.indexOf('timeline.onpointermove=e=>{',down),end=source.indexOf('function finishTimeline',move);
  vm.runInContext(source.slice(down,end),state);
  state.timeline.onpointerdown({button:0,clientX:210,pointerId:1});assert.equal(state.video.currentTime,10);

@@ -136,3 +136,15 @@ test('auto-detect is selectable only as the source and is included in uploads',a
  f.requests[0].status=201;f.requests[0].responseText=JSON.stringify({id:'auto-video'});f.requests[0].onload();await pending;
  const other=fixture();other.elements.get('target-language').value='auto';await other.run('uploadOne('+one+')');assert.equal(other.requests.length,0);
 });
+
+test('SRT reference attaches inside expanded translation options, snapshots into upload and can be removed',async()=>{
+ const f=fixture();assert.equal(f.run("selectTranslationSrt({name:'reference.srt',size:123})"),true);
+ assert.equal(f.elements.get('translation-srt-name').textContent,'reference.srt');assert.equal(f.elements.get('remove-translation-srt').hidden,false);
+ assert.equal(f.run("selectTranslationSrt({name:'wrong.txt',size:1})"),false);
+ assert.equal(f.run("selectTranslationSrt({name:'large.srt',size:3*1024**2})"),false);
+ f.elements.get('remove-translation-srt').onclick();assert.equal(f.elements.get('translation-srt-name').hidden,true);assert.equal(f.run('translationSrt'),null);f.run("selectTranslationSrt({name:'reference.srt',size:123})");
+ const pending=f.run('uploadOne('+one+')');assert.equal(f.requests[0].body.translation_srt.name,'reference.srt');assert.equal(f.elements.get('attach-translation-srt').disabled,true);
+ f.requests[0].status=201;f.requests[0].responseText=JSON.stringify({id:'srt-video'});f.requests[0].onload();await pending;
+ const html=fs.readFileSync(path.join(__dirname,'../static/index.html'),'utf8');const panel=html.slice(html.indexOf('<details class="translation-options"'),html.indexOf('</details>',html.indexOf('<details class="translation-options"')));
+ assert.ok(panel.indexOf('id="attach-translation-srt"')>panel.indexOf('</summary>'));
+});

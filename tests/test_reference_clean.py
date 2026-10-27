@@ -124,7 +124,7 @@ class ReferenceCleanTests(unittest.TestCase):
             self.assertEqual(sf.info(folder/'0000-fitted.wav').frames,SR//5+report['placement_offset_frames'])
             reference,_=sf.read(folder/'0000-reference.wav');self.assertEqual(reference[-1],0)
 
-    def test_finalized_boundaries_restore_original_with_standard_200ms_transition(self):
+    def test_finalized_boundaries_restore_original_with_standard_100ms_transition(self):
         with tempfile.TemporaryDirectory() as temp:
             folder=Path(temp);x,m=sample(SR);voice=np.stack([x,x],axis=1)
             sf.write(folder/'clean.wav',voice,SR,subtype='FLOAT')
@@ -150,7 +150,7 @@ class ReferenceCleanTests(unittest.TestCase):
             self.assertTrue(np.any((weights[hi:attack]>0)&(weights[hi:attack]<1)))
             self.assertLess(float(np.max(np.abs(np.diff(weights[hi-1:attack+1])))),.02)
             np.testing.assert_array_equal(weights,transition_weights(0,len(x),[segment]))
-            self.assertAlmostEqual(float(weights[hi+round(.15*SR)]),.25,places=5)
+            self.assertAlmostEqual(float(weights[hi+round(.15*SR)]),0.,places=5)
             sf.write(folder/'0000-fitted.wav',np.full((segment['hi']-segment['lo'],2),.03,dtype=np.float32),SR,subtype='FLOAT')
             mix(folder/'original.wav',folder/'clean.wav',[segment],folder,folder/'mix.wav',lambda *args:None,result['excluded_intervals'])
             mixed,_=sf.read(folder/'mix.wav',dtype='float32',always_2d=True)

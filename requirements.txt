@@ -23,3 +23,6 @@ SudachiPy>=0.6,<0.7
 sudachidict_core>=20240109
 
 filelock==3.25.2
+
+pycountry==26.2.16
+num2words==0.5.14

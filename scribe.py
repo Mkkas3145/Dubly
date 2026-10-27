@@ -17,7 +17,8 @@ AUDIO_BYTE_BUDGET=(INLINE_REQUEST_LIMIT-8192)//4*3
 MP3_BITRATES=(320,256,192,160,128,96,64,48,32,24,16)
 
 
-def prepare_input(source,folder,digest):
+def prepare_input(source,folder,digest,*,audio_byte_budget=None):
+    budget=AUDIO_BYTE_BUDGET if audio_byte_budget is None else audio_byte_budget
     converted=folder/'scribe-input-native.flac';encoded_identity=folder/'input-native.json'
     old=json.loads(encoded_identity.read_text(encoding='utf-8')) if encoded_identity.exists() else {}
     if not converted.exists() or old.get('source_sha256')!=digest:
@@ -25,7 +26,7 @@ def prepare_input(source,folder,digest):
         command(['ffmpeg','-nostdin','-v','error','-y','-i',str(source),'-c:a','flac','-compression_level','12',str(temp)])
         temp.replace(converted);atomic_json(encoded_identity,{'source_sha256':digest})
     info=sf.info(converted);duration=info.frames/info.samplerate
-    if converted.stat().st_size<=AUDIO_BYTE_BUDGET:
+    if converted.stat().st_size<=budget:
         return converted,'flac',duration
     native=sf.info(source)
     for bitrate in MP3_BITRATES:
@@ -33,7 +34,7 @@ def prepare_input(source,folder,digest):
         if bitrate<32 and rate>=32000:rate=24000
         if rate<32000 and bitrate>160:continue
         channels=min(native.channels,2)
-        if duration*bitrate*1000/8+8192>AUDIO_BYTE_BUDGET:continue
+        if duration*bitrate*1000/8+8192>budget:continue
         compressed=folder/f'scribe-input-{digest[:16]}-{rate//1000}k-{channels}ch-{bitrate}k.mp3'
         if not compressed.exists():
             temp=compressed.with_suffix('.partial.mp3')
@@ -44,7 +45,7 @@ def prepare_input(source,folder,digest):
                 temp.unlink(missing_ok=True)
                 raise RuntimeError('Compressed ASR audio duration or format differs from the source.')
             temp.replace(compressed)
-        if compressed.stat().st_size<=AUDIO_BYTE_BUDGET:
+        if compressed.stat().st_size<=budget:
             atomic_json(folder/'scribe-input-compression.json',{'source_sha256':digest,'format':'mp3',
                 'sample_rate':rate,'channels':channels,'bitrate_kbps':bitrate,'duration_seconds':duration,
                 'bytes':compressed.stat().st_size,'flac_bytes':converted.stat().st_size,

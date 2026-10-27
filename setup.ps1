@@ -8,5 +8,6 @@ $python=Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 & $python install_deux.py; Check-Exit
 & $python install_speedy.py; Check-Exit
 & $python install_mfa.py; Check-Exit
+& $python install_mms.py; Check-Exit
 if (!(Test-Path '.env')) { Copy-Item -LiteralPath '.env.example' -Destination '.env' }
 Write-Host 'Ready. Enter OPENROUTER_API_KEY in .env, then run start.bat.'

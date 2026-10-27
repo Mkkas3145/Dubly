@@ -54,3 +54,32 @@ test('both syllables of a short reply belong to its voice after punctuation-tail
  assert.equal(groups[1].parts.length,2);assert.equal(groups[1].start,45.081);
  assert.equal(groups[1].voice,'2');
 });
+
+
+test('playhead is a snap target for moving and either resize edge, with Alt bypass',()=>{
+ const snap=scope.window.DublySourceSnap,edges=[19.7,21.5],targets=snap.targets(edges,20.125);
+ assert.deepEqual(Array.from(edges),[19.7,21.5]);
+ assert.equal(snap.move(20.14,2,targets,200).position,20.125);
+ assert.equal(snap.move(18.14,2,targets,200).position,18.125);
+ assert.equal(snap.nearest(20.14,targets,200).time,20.125);
+ assert.equal(snap.move(20.14,2,targets,200,{disabled:true}).position,20.14);
+ assert.equal(snap.move(20.18,2,targets,200,{locked:20.125,lockedEdge:'start'}).position,20.125);
+ assert.equal(snap.nearest(20.18,snap.targets(edges,20.3),200,{locked:20.125}).boundary,null);
+ assert.equal(snap.move(10.01,2,snap.targets([],0),200).position,10.01);
+ assert.equal(snap.move(.03,2,snap.targets([],0),200).position,0);
+});
+
+test('dense snap candidates rank acoustic reliability and intent instead of taking the first edge',()=>{
+ const candidates=[{time:10.045,confidence:.3,priority:.2,kind:'speech'},{time:10.06,confidence:1,priority:1,kind:'clip-start'}];
+ assert.equal(nearest(10.05,candidates,100).kind,'clip-start');
+ assert.equal(nearest(10.05,[...candidates].reverse(),100).kind,'clip-start');
+ assert.equal(nearest(10.045,[candidates[0],{...candidates[1],time:10.095}],100).kind,'speech','an exact pointer hit beats a distant preferred candidate');
+ assert.equal(nearest(10.02,[{time:10,confidence:1,priority:.65},{time:10.05,confidence:1,priority:1}],100).time,10.05,'same-track preference resolves a crowded cluster');
+});
+
+test('a better candidate releases the existing snap lock without requiring an overshoot',()=>{
+ const hit=nearest(10.08,[10,10.085],100,{locked:10});
+ assert.equal(hit.boundary,10.085);
+ assert.equal(nearest(10.08,[10],100,{locked:10}).boundary,10);
+ assert.equal(nearest(10.08,[10,10.085],100,{locked:10,disabled:true}).boundary,null);
+});

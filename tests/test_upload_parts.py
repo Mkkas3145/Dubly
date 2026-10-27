@@ -75,3 +75,14 @@ def test_failed_split_leaves_no_partial_upload_records(tmp_path,media):
 def test_cleanup_cannot_remove_parent_or_outside_directory(tmp_path):
  (tmp_path/'work/videos').mkdir(parents=True)
  with pytest.raises(RuntimeError):parts.cleanup([tmp_path],tmp_path)
+
+def test_three_hour_default_accepts_full_recording_and_balances_longer_uploads():
+ info={'streams':[{'codec_type':'audio','index':1}]}
+ assert parts.MAX_PART_SECONDS==10800
+ with patch.object(parts,'_keys',side_effect=AssertionError('No split below the limit')):
+  assert parts.plan(Path('source.mp4'),10800,info)==[{'start':0.,'end':10800,'start_key':True,'end_key':True,'boundary':'whole'}]
+ with patch.object(parts,'_keys',side_effect=lambda source,a,b:[(a+b)/2]),patch.object(parts,'_quiet',side_effect=lambda source,a,b,index:[(a,b)]):
+  plan=parts.plan(Path('source.mp4'),4*3600,info)
+ assert len(plan)==2
+ assert all(0<p['end']-p['start']<=10800 for p in plan)
+ assert plan[0]['start']==0 and plan[-1]['end']==14400 and plan[0]['end']==plan[1]['start']

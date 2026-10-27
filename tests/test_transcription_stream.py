@@ -30,6 +30,11 @@ class StreamingTests(unittest.TestCase):
         self.assertIn(1,counts)
         self.assertIn(2,counts)
 
+    def test_translation_tag_objects_count_only_after_each_complete_region(self):
+        counter=speech.SegmentStreamCounter([0,1])
+        self.assertEqual(counter.feed('{"0":{"t":"안녕.","c":["shouting"]'),0)
+        self.assertEqual(counter.feed('},"1":{"t":"네.","c":[]}}'),2)
+
     def test_voice_numbers_wait_for_complete_numeric_value(self):
         counter=speech.SegmentStreamCounter([0,1])
         self.assertEqual(counter.feed('{"0":1'),0)

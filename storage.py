@@ -22,7 +22,7 @@ class Store:
                 detail TEXT NOT NULL DEFAULT '', error TEXT, created REAL NOT NULL, updated REAL NOT NULL
             )''')
             columns={r['name'] for r in db.execute('PRAGMA table_info(videos)')}
-            for field in ('source_language','target_language','detected_source_language'):
+            for field in ('source_language','target_language','detected_source_language','translation_prompt'):
                 if field not in columns:db.execute(f'ALTER TABLE videos ADD COLUMN {field} TEXT')
             if 'workflow_action' not in columns:db.execute("ALTER TABLE videos ADD COLUMN workflow_action TEXT NOT NULL DEFAULT 'full'")
             if 'resource_state' not in columns:db.execute("ALTER TABLE videos ADD COLUMN resource_state TEXT NOT NULL DEFAULT 'local'")
@@ -45,27 +45,31 @@ class Store:
             db.execute("UPDATE videos SET state='queued',phase='재개 대기',detail='',updated=? WHERE state='running'", (time.time(),))
             db.execute("UPDATE videos SET state='error',phase='삭제 실패',error='삭제가 중단되었습니다. 다시 삭제해 주세요.',updated=? WHERE state='deleting'", (time.time(),))
 
-    def add(self, video_id, filename, *, source_language=None, target_language=None,tts_preset='creative'):
+    def add(self, video_id, filename, *, source_language=None, target_language=None,tts_preset='creative',translation_prompt=''):
         from tts_presets import options
         options(tts_preset)
+        if not isinstance(translation_prompt,str) or len(translation_prompt)>8000:raise ValueError('Additional translation instructions must be 8000 characters or fewer.')
+        translation_prompt=translation_prompt.strip()
         if (source_language is None)!=(target_language is None):raise ValueError('Both languages are required')
         if source_language is not None and (source_language not in SOURCE_SELECTIONS or target_language not in TARGET_LANGUAGES or source_language==target_language):
             raise ValueError('Invalid language pair')
         now=time.time()
         with self.connection() as db:
-            db.execute('INSERT INTO videos(id,filename,created,updated,source_language,target_language,tts_preset) VALUES(?,?,?,?,?,?,?)',
-                       (video_id,filename,now,now,source_language,target_language,tts_preset))
+            db.execute('INSERT INTO videos(id,filename,created,updated,source_language,target_language,tts_preset,translation_prompt) VALUES(?,?,?,?,?,?,?,?)',
+                       (video_id,filename,now,now,source_language,target_language,tts_preset,translation_prompt))
         return self.get(video_id)
 
-    def add_uploaded(self,items,*,source_language=None,target_language=None,tts_preset='creative'):
+    def add_uploaded(self,items,*,source_language=None,target_language=None,tts_preset='creative',translation_prompt=''):
         from tts_presets import options
         options(tts_preset)
+        if not isinstance(translation_prompt,str) or len(translation_prompt)>8000:raise ValueError('Additional translation instructions must be 8000 characters or fewer.')
+        translation_prompt=translation_prompt.strip()
         if (source_language is None)!=(target_language is None):raise ValueError('Both languages are required')
         if source_language is not None and (source_language not in SOURCE_SELECTIONS or target_language not in TARGET_LANGUAGES or source_language==target_language):raise ValueError('Invalid language pair')
         now=time.time()
         with self.connection() as db:
-            db.executemany("INSERT INTO videos(id,filename,created,updated,source_language,target_language,tts_preset,state,phase,detail) VALUES(?,?,?,?,?,?,?,'uploaded','업로드 완료','분석 준비 완료')",
-                [(item['id'],item['filename'],now,now,source_language,target_language,tts_preset) for item in items])
+            db.executemany("INSERT INTO videos(id,filename,created,updated,source_language,target_language,tts_preset,translation_prompt,state,phase,detail) VALUES(?,?,?,?,?,?,?,?,'uploaded','업로드 완료','분석 준비 완료')",
+                [(item['id'],item['filename'],now,now,source_language,target_language,tts_preset,translation_prompt) for item in items])
         return [self.get(item['id']) for item in items]
 
     def get(self, video_id):

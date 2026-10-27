@@ -89,7 +89,7 @@ def run(video_id,action='full',segment_index=None):
         transcription_tag=cfg['diarizer']+'-native-fixed-text-speakers-gemini-translation-v1'
         dialogue_work=stage_work/f'full-audio-v{TRANSCRIPTION_VERSION}-{cfg["language"]}-{transcription_tag}'
         dialogue_work.mkdir(exist_ok=True)
-        transcript=transcribe(clean,dialogue_work,dialogue_work/'segments.json',cfg,
+        transcript=transcribe(clean,dialogue_work,dialogue_work/'segments.json',{**cfg,'alignment_original_audio':str(original)},
             phase('2/4 전체 음성 전사·번역',32,52))
         if transcript.get('boundary_authority') in ('scribe_v2','voxtral_transcribe_3','diarizen_native','nemotron_eend_vc','mai_transcribe_2','fish_transcribe_1_pro','gemini_native_audio','qwen_omni_audio','fish_qwen_gemini','moss_transcribe_diarize'):source_transcription={}
         else:

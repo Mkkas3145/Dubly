@@ -9,7 +9,7 @@ from stretch import stretch as collision_stretch,ENGINE as COLLISION_ENGINE,VERS
 from mfa_hint import alignment_hint
 from pause_matching import source_guided_plan,word_boundary_insertions
 
-FIT_VERSION = 48
+FIT_VERSION = 50
 TIMING_POLICY = 'verified_pauses_then_unspoken_tail_reduction_then_speedy_on_overlap'
 MAX_SLOW_DURATION_FACTOR = 1.0  # Never slow speech down.
 NATURAL_MIN_TEMPO = 1.0

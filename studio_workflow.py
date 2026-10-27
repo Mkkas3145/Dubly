@@ -106,7 +106,8 @@ def restore_generation(video_id,index,audio_key,root=ROOT):
     import shutil
     doc,ctx=load(video_id,root);row=doc['transcript']['segments'][index];base=clip_file(video_id,index,root)
     if audio_key is not None and (not isinstance(audio_key,str) or len(audio_key)!=64 or any(c not in '0123456789abcdef' for c in audio_key)):raise ValueError('Invalid audio version.')
-    current=digest(base) if base.exists() else None;restored_input=generation_input(doc,index)
+    restored_generation=copy.deepcopy(doc.get('generated',{}).get(str(index),{}))
+    current=digest(base) if base.exists() else None;restored_input=generation_input(doc,index);restored_policy=doc.get('generated',{}).get(str(index),{}).get('processing_policy')
     if audio_key is None:
         archive_generation(video_id,index,doc,root)
         doc.setdefault('generated',{}).setdefault(str(index),{})['hidden']=True;row['audio_edit']={}
@@ -119,11 +120,37 @@ def restore_generation(video_id,index,audio_key,root=ROOT):
                 if source.is_file():
                     temporary=base.parent/(source.name+'.restore.tmp');shutil.copy2(source,temporary);temporary.replace(base.parent/source.name)
             state_file=archive/'editor-state.json';state=json.loads(state_file.read_text('utf8')) if state_file.exists() else {}
-            row['audio_edit']=state.get('audio_edit',{});restored_input=state.get('generation',{}).get('input')
+            restored_generation=state.get('generation',{})
+            row['audio_edit']=state.get('audio_edit',{});restored_input=state.get('generation',{}).get('input');restored_policy=state.get('generation',{}).get('processing_policy')
         if digest(base)!=audio_key:raise RuntimeError('Previous audio validation failed.')
-        doc.setdefault('generated',{})[str(index)]={'input_hash':row_key(doc,index),'sha256':audio_key,'seconds':sf.info(base).duration,'error':None,'restored':True,'input':restored_input}
+        doc.setdefault('generated',{})[str(index)]={'input_hash':row_key(doc,index),'sha256':audio_key,'seconds':sf.info(base).duration,'error':None,'restored':True,'input':restored_input,'processing_policy':restored_policy,'edge_fades':restored_generation.get('edge_fades'),'split_from':restored_generation.get('split_from')}
     doc['revision']+=1;doc['updated']=time.time();atomic_json(paths(video_id,root)[1],doc)
     return doc,ctx
+
+def use_raw_generation(video_id,index,doc,root=ROOT):
+    """Use immutable generated speech without timing edits; mix gain stays downstream."""
+    row=doc['transcript']['segments'][index]
+    generation=doc.get('generated',{}).get(str(index),{})
+    base=clip_file(video_id,index,root);raw=base.with_name(f'{index:04d}-tts.mp3')
+    if generation.get('split_from') is not None or not raw.is_file():
+        raise ValueError('Original generated audio is not available for this clip.')
+    temporary=base.with_name(f'.raw-{index:04d}.tmp.wav')
+    try:
+        command(['ffmpeg','-nostdin','-v','error','-y','-i',str(raw),'-ar',str(SR),'-ac','2','-c:a','pcm_f32le',str(temporary)])
+        info=sf.info(temporary)
+        if not info.frames:raise ValueError('Original generated audio is empty.')
+        archive_generation(video_id,index,doc,root)
+        position=row.get('audio_edit',{}).get('position',row['start'])
+        temporary.replace(base)
+    finally:
+        temporary.unlink(missing_ok=True)
+    row['audio_edit']={'position':position}
+    generation.update(sha256=digest(base),seconds=info.duration,error=None,hidden=False,
+        raw_audio=True,edge_fades={'start':False,'end':False})
+    doc.setdefault('generated',{})[str(index)]=generation
+    doc['revision']+=1;doc['updated']=time.time();atomic_json(paths(video_id,root)[1],doc)
+    return doc
+
 
 def peaks(values,count=1000):
     x=np.max(np.abs(values),axis=1) if values.ndim==2 else np.abs(values)
@@ -201,13 +228,14 @@ def validate_edit(edit,info,duration):
     if isinstance(edit,dict) and 'target_duration' in edit:
         if set(edit)-{'position','target_duration'}:raise ValueError('Invalid audio edit format.')
         edit=resolve_pending_length(edit,info)
-    if not isinstance(edit,dict) or set(edit)-{'trim_start','trim_end','speed','position','pauses','audio_sha256','pad_start','pad_end'}:raise ValueError('Invalid audio edit format.')
+    if not isinstance(edit,dict) or set(edit)-{'trim_start','trim_end','speed','position','pauses','audio_sha256','pad_start','pad_end','fade_in','fade_out'}:raise ValueError('Invalid audio edit format.')
     result={}
-    for field,default in [('trim_start',0.),('trim_end',None),('speed',1.),('position',None),('pad_start',0.),('pad_end',0.)]:
+    for field,default in [('trim_start',0.),('trim_end',None),('speed',1.),('position',None),('pad_start',0.),('pad_end',0.),('fade_in',0.),('fade_out',0.)]:
         value=edit.get(field,default)
         if value is not None and (type(value) not in (int,float) or not math.isfinite(value)):raise ValueError('Invalid audio edit values.')
         result[field]=value
     if not 1<=result['speed']<=8:raise ValueError('Playback speed must be between 1x and 8x.')
+    if not all(type(result[k]) in (int,float) and 0<=result[k]<=duration for k in ('fade_in','fade_out')):raise ValueError('Invalid fade duration.')
     if not all(0<=result[k]<=duration for k in ('pad_start','pad_end')):raise ValueError('Invalid pause duration.')
     end=result['trim_end'] if result['trim_end'] is not None else info['duration']
     if not 0<=result['trim_start']<end<=info['duration']+.001:raise ValueError('Trim interval exceeds generated audio duration.')
@@ -219,14 +247,29 @@ def validate_edit(edit,info,duration):
         amount=p['seconds']
         if type(amount) not in (int,float) or not math.isfinite(amount) or not .01<=amount<=duration:raise ValueError('Invalid pause duration.')
         seen.add(p['id']);result['pauses'].append({'id':p['id'],'seconds':float(amount)})
+    from audio_edges import fade_lengths
+    delta=sum(p['seconds']-(slots[p['id']]['end']-slots[p['id']]['start']) for p in result['pauses'] if result['trim_start']<=slots[p['id']]['start'] and slots[p['id']]['end']<=end)
+    body=max(0.,(end-result['trim_start']+delta)/result['speed'])
+    result['fade_in'],result['fade_out']=fade_lengths(result['fade_in'],result['fade_out'],body)
     result['audio_sha256']=info['sha256'];return result
 
 @local_stage
+def base_edge_fades(doc,index):
+    generation=doc.get('generated',{}).get(str(index),{})
+    flags=generation.get('edge_fades')
+    if isinstance(flags,dict):return {'start':bool(flags.get('start',True)),'end':bool(flags.get('end',True))}
+    parent=generation.get('split_from')
+    if type(parent) is int:return {'start':parent==index,'end':parent!=index}
+    return {'start':True,'end':True}
+
+
 def edited_audio(video_id,index,doc,context,root=ROOT):
     folder=paths(video_id,root)[0];source=clip_file(video_id,index,root);row=doc['transcript']['segments'][index]
     edit=row.get('audio_edit') or {};info=clip_info(video_id,index,root)
-    if not edit:return source
-    edit=validate_edit(edit,info,context['duration']);key=hashlib.sha256(json.dumps(edit,sort_keys=True).encode()).hexdigest()
+    from audio_edges import edited_edge_fades,apply_dialogue_fades
+    fades=edited_edge_fades(edit,info['duration'],base_edge_fades(doc,index))
+    if not edit and not any(fades.values()):return source
+    edit=validate_edit(edit,info,context['duration']);fades=edited_edge_fades(edit,info['duration'],base_edge_fades(doc,index));key=hashlib.sha256(json.dumps({'edit':edit,'audio':info['sha256'],'fades':fades,'fade_version':2},sort_keys=True).encode()).hexdigest()
     out=folder/'audio-edits'/f'{index:04d}-{key}.wav'
     if out.exists():return out
     out.parent.mkdir(exist_ok=True);values,sr=sf.read(source,dtype='float32',always_2d=True)
@@ -249,9 +292,21 @@ def edited_audio(video_id,index,doc,context,root=ROOT):
         from speedy import stretch
         stretch(temp,out,max(1,round(len(values)/edit['speed'])))
     else:temp.replace(out)
+    if any(fades.values()):
+        rendered,rate=sf.read(out,dtype='float32',always_2d=True)
+        before=min(len(rendered),round(edit['pad_start']*rate/edit['speed']));after=round(edit['pad_end']*rate/edit['speed']);end=max(before,len(rendered)-after)
+        rendered[before:end]=apply_dialogue_fades(rendered[before:end],rate,fade_in=edit['fade_in'],fade_out=edit['fade_out'])
+        sf.write(temp,rendered,rate,subtype='FLOAT')
+        temp.replace(out)
     return out
 
+def transition_policy():
+    from render import MIX_VERSION,TRANSITION_SECONDS,REPLACEMENT_MARGIN_SECONDS
+    return {'version':MIX_VERSION,'fade_seconds':TRANSITION_SECONDS,'margin_seconds':REPLACEMENT_MARGIN_SECONDS}
+
+
 def public(doc,context,video_id,root=ROOT):
+    policy=transition_policy()
     rows=[];history=paths(video_id,root)[0]/'generation-history';counts={}
     for folder in history.glob('*'):
         prefix=folder.name.split('-')[0]
@@ -262,14 +317,16 @@ def public(doc,context,video_id,root=ROOT):
         if pending and not generation:available=False
         rows.append({'id':i,**{k:row.get(k) for k in ('start','end','original_text','translated_text','speaker_id','keep_original')},
             'audio_edit':row.get('audio_edit',{}),'deleted':bool(row.get('deleted')),'audio_ready':available,'audio_stale':available and generation.get('input_hash')!=row_key(doc,i),
-            'audio_seconds':generation.get('seconds'),'audio_error':generation.get('error'),'audio_key':generation.get('sha256') if available else None,'audio_history_count':counts.get(i,0),'audio_input':generation_input(doc,i),'audio_processing':pending})
+            'raw_audio_available':(clip_file(video_id,i,root).with_name(f'{i:04d}-tts.mp3').is_file() and generation.get('split_from') is None),'audio_seconds':generation.get('seconds'),'audio_error':generation.get('error'),'audio_key':generation.get('sha256') if available else None,'audio_history_count':counts.get(i,0),'audio_edge_fades':base_edge_fades(doc,i),'audio_input':generation_input(doc,i),'audio_processing':pending})
     return {'revision':doc['revision'],'updated':doc['updated'],'segments':rows,'duration':context['duration'],'target_language':doc['transcript']['target_language'],
-        'render_revision':doc.get('render_revision'),'render_stale':doc.get('render_revision')!=doc['revision'] or doc.get('render_volume_version')!=VOLUME_VERSION,'preview_revision':doc.get('preview_revision'),'player_revision':doc.get('player_revision'),'player_volume_version':doc.get('player_volume_version'),'volume_policy_version':VOLUME_VERSION,'tts_gain_db':TTS_GAIN_DB,'speaker_names':doc.get('speaker_names',{}),'speaker_ids':doc.get('speaker_ids',[]),'has_background':bool(context.get('background'))}
+        'mix_version':policy['version'],'transition_seconds':policy['fade_seconds'],'replacement_margin_seconds':policy['margin_seconds'],
+        'render_revision':doc.get('render_revision'),'render_stale':doc.get('render_revision')!=doc['revision'] or doc.get('render_volume_version')!=VOLUME_VERSION or doc.get('render_mix_version')!=policy['version'],'preview_revision':doc.get('preview_revision') if doc.get('preview_mix_version')==policy['version'] else None,'player_revision':doc.get('player_revision') if doc.get('player_mix_version')==policy['version'] else None,'player_volume_version':doc.get('player_volume_version'),'volume_policy_version':VOLUME_VERSION,'tts_gain_db':TTS_GAIN_DB,'speaker_names':doc.get('speaker_names',{}),'speaker_ids':doc.get('speaker_ids',[]),'has_background':bool(context.get('background'))}
 
 def save(video_id,payload,root=ROOT):
     doc,ctx=load(video_id,root)
     if doc is None:raise ValueError('The script is not ready yet.')
     if type(payload.get('revision')) is not int or payload['revision']!=doc['revision']:raise RuntimeError('The script was updated in another view. Refresh before editing.')
+    before_split_restore=copy.deepcopy(doc);restoring_split_range=False
     proposed=payload.get('segments');rows=doc['transcript']['segments']
     if not isinstance(proposed,list) or not len(rows)<=len(proposed)<=10000:raise ValueError('Dialogue counts do not match.')
     for i,p in enumerate(proposed[len(rows):],len(rows)):
@@ -287,14 +344,21 @@ def save(video_id,payload,root=ROOT):
     for i,(p,row) in enumerate(zip(proposed,rows)):
         if not isinstance(p,dict) or type(p.get('id')) is not int or p['id']!=i or set(p)-{'id','original_text','translated_text','speaker_id','keep_original','audio_edit','deleted','start','end'}:raise ValueError('Invalid dialogue ID or edit format.')
         if type(p.get('deleted',False)) is not bool:raise ValueError('Invalid dialogue deletion setting.')
-        if any(k in p and (type(p[k]) not in (int,float) or not math.isfinite(p[k]) or abs(p[k]-row[k])>.00001) for k in ('start','end')):raise ValueError('Existing reference timestamps cannot be changed.')
+        proposed_range=[p.get('start',row['start']),p.get('end',row['end'])]
+        if any(type(v) not in (int,float) or not math.isfinite(v) for v in proposed_range):raise ValueError('Invalid source range.')
+        if any(abs(proposed_range[j]-row[k])>.00001 for j,k in enumerate(('start','end'))):
+            if not any(all(abs(a-b)<.00001 for a,b in zip(proposed_range,bounds)) for bounds in row.get('_source_range_history',[])):
+                raise ValueError('Existing reference timestamps cannot be changed.')
+            row.update(start=proposed_range[0],end=proposed_range[1]);changed=True;restoring_split_range=True
+            windows=doc['transcript'].get('reference_windows')
+            if windows:windows[i].update(start=row['start'],end=row['end'],start_frame=round(row['start']*SR),end_frame=round(row['end']*SR))
         for field in ['original_text','translated_text','speaker_id']:
             if field not in p:raise ValueError('Required dialogue data is missing.')
-        if not isinstance(p['original_text'],str) or not p['original_text'].strip() or len(p['original_text'])>8000:raise ValueError('Invalid source transcript.')
+        if not isinstance(p['original_text'],str) or (not p['original_text'].strip() and '_split_from' not in row) or len(p['original_text'])>8000:raise ValueError('Invalid source transcript.')
         if p['translated_text'] is not None and (not isinstance(p['translated_text'],str) or len(p['translated_text'])>8000):raise ValueError('Invalid translated dialogue.')
         if not isinstance(p['speaker_id'],str) or not p['speaker_id'].strip() or len(p['speaker_id'])>64:raise ValueError('Invalid speaker ID.')
         if type(p.get('keep_original',False)) is not bool:raise ValueError('Invalid source audio preservation setting.')
-        update={k:p[k] for k in ('original_text','translated_text','speaker_id')};update['keep_original']=p.get('keep_original',False) or not bool((p['translated_text'] or '').strip());update['deleted']=p.get('deleted',False)
+        update={k:p[k] for k in ('original_text','translated_text','speaker_id')};update['keep_original']=p.get('keep_original',False) or (not bool((p['translated_text'] or '').strip()) and '_split_from' not in row);update['deleted']=p.get('deleted',False)
         edit=p.get('audio_edit',{})
         if edit and not clip_file(video_id,i,root).exists():
             if not isinstance(edit,dict) or set(edit)-{'position','target_duration'}:raise ValueError('Only placement intervals can be edited before audio generation.')
@@ -311,6 +375,10 @@ def save(video_id,payload,root=ROOT):
             if row.get('speaker_id')!=update['speaker_id']:update['_speaker_locked']=True
             if update['translated_text']!=row.get('translated_text'):row.pop('keep_original_reason',None)
             row.update(update);changed=True
+    if restoring_split_range:
+        for i,old in enumerate(before_split_restore['transcript']['segments']):
+            prior=before_split_restore.get('generated',{}).get(str(i),{})
+            if old==rows[i] and prior.get('input_hash')==row_key(before_split_restore,i):doc['generated'][str(i)]['input_hash']=row_key(doc,i)
     if changed:
         doc['revision']+=1;doc['updated']=time.time();atomic_json(paths(video_id,root)[1],doc)
     return doc,ctx
@@ -350,7 +418,7 @@ def import_published(video_id,job,root=ROOT):
             saved=json.loads(meta.read_text('utf8'))
             if abs(saved.get('start',-10)-row['start'])>.001 or abs(saved.get('end',-10)-row['end'])>.001:continue
             shutil.copy2(old,pieces/old.name);doc['generated'][str(i)]={'input_hash':row_key(doc,i),'seconds':sf.info(old).duration,'sha256':digest(old),'imported':True}
-        doc['render_revision']=doc['revision'];doc['render_volume_version']=VOLUME_VERSION;atomic_json(paths(video_id,root)[1],doc)
+        doc['render_revision']=doc['revision'];doc['render_mix_version']=report.get('mix_version');doc['render_volume_version']=VOLUME_VERSION;atomic_json(paths(video_id,root)[1],doc)
 
 def apply_verified_speakers(doc,segments,audit):
     """Expose the same verified voice identity used by TTS; preserve user choices."""
@@ -433,7 +501,7 @@ def generate(video_id,action,index=None):
                 if 'target_duration' in edit:
                     row['audio_edit']=validate_edit(edit,clip_info(video_id,i),ctx['duration']);doc['revision']+=1
                 elif previous.get('sha256') and changed and edit:
-                    row['audio_edit']={k:edit[k] for k in ('position',) if k in edit};doc['revision']+=1
+                    row['audio_edit']={k:edit[k] for k in ('position','fade_in','fade_out') if k in edit};doc['revision']+=1
                 doc.setdefault('generated',{})[str(i)]={'input_hash':generation_keys.get(i,row_key(doc,i)) if index is not None else row_key(doc,i),'sha256':sha,'seconds':sf.info(base).duration,'error':report.get('reason') if report.get('keep_original') else None,'input':generation_input(doc,i) if report.get('cached') else (generation_texts[i] if index is not None else {k:row.get(k) for k in ('original_text','translated_text','speaker_id','keep_original')}),'processing_policy':previous.get('processing_policy') if report.get('cached') else processing_policy}
                 doc.get('_generation_status',{}).pop(str(i),None)
                 if publish:
@@ -551,6 +619,9 @@ def generate(video_id,action,index=None):
             row={**segments[index],'next_dialogue_start_frame':min((s['lo'] for s in segments if not s.get('deleted') and s['lo']>segments[index]['lo']),default=round(ctx['duration']*SR))}
             if row.get('keep_original'):raise RuntimeError('Disable source audio preservation and enter translated dialogue.')
             reports=[fit_speech(generate_speech(index,row,Path(ctx['clean']),pieces,cfg),cfg)];ids=[index]
+        if action not in {'mix','watch'}:
+            from tts_collision import relax_collisions
+            reports=relax_collisions(segments,reports,Path(ctx['clean']),pieces,cfg,wanted=ids)
         changed_audio=False
         for i,report in zip(ids,reports):
             changed_audio=record_report(i,report) or changed_audio
@@ -573,7 +644,7 @@ def generate(video_id,action,index=None):
                 shutil.copy2(audio,render_dir/f'{j:04d}-fitted.wav')
                 if not s.get('keep_original'):
                     start=min(s['lo'],s.get('output_start_frame',s['lo']));end=max(s['hi'],s.get('output_start_frame',s['lo'])+sf.info(audio).frames)
-                    replacements.append({'lo':max(0,start-round(.2*SR)),'hi':min(round(ctx['duration']*SR),end+round(.2*SR))})
+                    replacements.append({'lo':max(0,start-round(transition_policy()['margin_seconds']*SR)),'hi':min(round(ctx['duration']*SR),end+round(transition_policy()['margin_seconds']*SR))})
             from render import replacement_intervals,speech_placements
             try:replacements=replacement_intervals([s for i,s,a in rendered],round(ctx['duration']*SR),speech_placements([s for i,s,a in rendered],render_dir))
             except RuntimeError:
@@ -581,18 +652,18 @@ def generate(video_id,action,index=None):
             mixed=folder/'mixed.wav';mix(Path(ctx['original']),Path(ctx['clean']),[s for i,s,a in rendered],render_dir,mixed,lambda p,d:progress(75+p*.15,'배경음과 편집 음성 합치는 중'),excluded_intervals=transcript.get('excluded_intervals',[]),background=Path(ctx['background']) if ctx.get('background') else None,replacement_override=sorted(replacements,key=lambda r:r['lo']))
             progress(91,'미리듣기 오디오 저장 중')
             preview=folder/'preview.partial.mp3';command(['ffmpeg','-nostdin','-v','error','-y','-i',str(mixed),'-c:a','libmp3lame','-b:a','320k',str(preview)]);preview.replace(folder/'preview.mp3')
-            doc['preview_revision']=doc['revision'];doc['preview_volume_version']=VOLUME_VERSION;doc['updated']=time.time();persist()
+            doc['preview_revision']=doc['revision'];doc['preview_mix_version']=transition_policy()['version'];doc['preview_volume_version']=VOLUME_VERSION;doc['updated']=time.time();persist()
             if action=='watch':
                 player_dir=folder/'player';player_dir.mkdir(exist_ok=True)
                 progress(94,'재생용 영상 준비 중')
                 mux(Path(ctx['source']),mixed,player_dir/'video.mp4',cfg['language'],ctx['duration'])
-                doc['player_revision']=doc['revision'];doc['player_volume_version']=VOLUME_VERSION;doc['updated']=time.time()
+                doc['player_revision']=doc['revision'];doc['player_mix_version']=transition_policy()['version'];doc['player_volume_version']=VOLUME_VERSION;doc['updated']=time.time()
                 persist()
             if action=='render':
                 output=ROOT/'outputs'/video_id;output.mkdir(exist_ok=True);progress(93,'MP4 저장 중')
                 mux(Path(ctx['source']),mixed,output/'final.mp4',cfg['language'],ctx['duration'])
                 atomic_json(output/'segments.json',doc['transcript']);atomic_json(output/'editor-render.json',{'revision':doc['revision'],'edits':[s.get('audio_edit',{}) for s in doc['transcript']['segments']],'tts_reports':reports,'duration':ctx['duration']})
-                doc['render_revision']=doc['revision'];doc['render_volume_version']=VOLUME_VERSION;persist()
+                doc['render_revision']=doc['revision'];doc['render_mix_version']=transition_policy()['version'];doc['render_volume_version']=VOLUME_VERSION;persist()
                 store.update(video_id,state='done',phase='완료',progress=100,phase_progress=100,detail='편집한 MP4가 준비되었습니다.',error=None)
             else:store.update(video_id,state='ready',phase='편집 준비 완료',progress=100,phase_progress=100,detail='대사와 파형을 편집할 수 있습니다.',error=None)
         else:store.update(video_id,state='ready',phase='편집 준비 완료',progress=100,phase_progress=100,detail='대사와 파형을 편집할 수 있습니다.',error=None)
@@ -649,14 +720,14 @@ def router(api):
     @routes.post('/api/studio/{video_id}/watch')
     def prepare_watch(video_id:str,payload:dict=Body(...)):
         job,doc,ctx=document(video_id)
-        if doc and payload.get('revision')==doc['revision'] and doc.get('player_revision')==doc['revision'] and doc.get('player_volume_version')==VOLUME_VERSION:
+        if doc and payload.get('revision')==doc['revision'] and doc.get('player_revision')==doc['revision'] and doc.get('player_volume_version')==VOLUME_VERSION and doc.get('player_mix_version')==transition_policy()['version']:
             from media_output import resolve
             if resolve(paths(video_id,root())[0]/'player/video.mp4').exists():return {'ok':True,'ready':True}
         return enqueue(video_id,'watch',payload)
     @routes.get('/api/studio/{video_id}/watch-video')
     def watch_video(video_id:str):
         _,doc,_=document(video_id)
-        if not doc or doc.get('player_revision')!=doc['revision'] or doc.get('player_volume_version')!=VOLUME_VERSION:raise HTTPException(409,'Prepare a video using the current edits.')
+        if not doc or doc.get('player_revision')!=doc['revision'] or doc.get('player_volume_version')!=VOLUME_VERSION or doc.get('player_mix_version')!=transition_policy()['version']:raise HTTPException(409,'Prepare a video using the current edits.')
         from media_output import resolve
         path=resolve(paths(video_id,root())[0]/'player/video.mp4')
         if not path.is_file():raise HTTPException(404,'Playback video is not available yet.')
@@ -745,8 +816,26 @@ def router(api):
         get(video_id);path=paths(video_id,root())[0]/'preview.mp3'
         if not path.exists():raise HTTPException(404,'Audio preview is not available yet.')
         return FileResponse(path,media_type='audio/mpeg',headers={'Cache-Control':'no-cache'})
+    @routes.post('/api/studio/{video_id}/segments/{index}/split')
+    def split_segment(video_id:str,index:int,payload:dict=Body(...)):
+        from clip_split import split_clip
+        job=get(video_id)
+        if job['state']=='deleting' or (job['state'] in {'running','queued'} and not (job.get('workflow_action')=='tts' and job.get('editor_index') is not None and job.get('editor_index')!=index)):raise HTTPException(409,'Wait for this clip to finish generating before splitting it.')
+        try:return split_clip(video_id,index,payload,root())
+        except ValueError as error:raise HTTPException(400,str(error)) from None
+        except RuntimeError as error:raise HTTPException(409,str(error)) from None
     @routes.post('/api/studio/{video_id}/segments/{index}/generate')
     def segment(video_id:str,index:int,payload:dict=Body(...)):return enqueue(video_id,'tts',payload,index)
+    @routes.post('/api/studio/{video_id}/segments/{index}/use-raw')
+    def use_raw(video_id:str,index:int,payload:dict=Body(...)):
+        with api.queue.lock,LOCK:
+            job,doc,ctx=document(video_id)
+            if job['state'] in {'running','queued','deleting'}:raise HTTPException(409,'Editing is unavailable during processing.')
+            if doc is None or not 0<=index<len(doc['transcript']['segments']):raise HTTPException(404,'No dialogue was found.')
+            if payload.get('revision')!=doc['revision']:raise HTTPException(409,'Save the script before retrying.')
+            try:doc=use_raw_generation(video_id,index,doc,root())
+            except (ValueError,RuntimeError) as error:raise HTTPException(400,str(error)) from None
+        return public(doc,ctx,video_id,root())
     @routes.get('/api/studio/{video_id}/segments/{index}/versions')
     def versions(video_id:str,index:int):
         _,doc,_=document(video_id)
@@ -827,7 +916,7 @@ def router(api):
         with sf.SoundFile(ctx['clean']) as audio:
             lo=round(row['start']*audio.samplerate);hi=min(len(audio),round(row['end']*audio.samplerate));audio.seek(lo)
             values=audio.read(max(0,hi-lo),dtype='float32',always_2d=True)
-        return {**info,'reference_rms':float(np.sqrt(np.mean(values**2))) if values.size else 0.}
+        return {**info,'edge_fades':base_edge_fades(doc,index),'reference_rms':float(np.sqrt(np.mean(values**2))) if values.size else 0.}
     @routes.get('/api/studio/{video_id}/segments/{index}/audio')
     def clip(video_id:str,index:int,kind:str='edited'):
         job,doc,ctx=document(video_id)

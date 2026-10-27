@@ -64,8 +64,18 @@ def state():
 
 @app.post('/api/videos',status_code=201)
 async def upload(request:Request,file:UploadFile=File(...),source_language:str|None=Form(None),
-                 target_language:str|None=Form(None),tts_preset:str=Form('creative')):
+                 target_language:str|None=Form(None),tts_preset:str=Form('creative'),translation_prompt:str=Form(''),translation_srt:UploadFile|None=File(None)):
     from tts_presets import PRESETS
+    if len(translation_prompt)>8000:
+        await file.close();raise HTTPException(422,'Additional translation instructions must be 8000 characters or fewer.')
+    translation_prompt=translation_prompt.strip()
+    subtitle_reference=None
+    if translation_srt is not None:
+        from subtitle_reference import parse_srt,MAX_BYTES
+        try:subtitle_reference=parse_srt(await translation_srt.read(MAX_BYTES+1),translation_srt.filename or '')
+        except ValueError as error:
+            await file.close();raise HTTPException(422,str(error)) from None
+        finally:await translation_srt.close()
     if tts_preset not in PRESETS:
         await file.close()
         raise HTTPException(422,'Unsupported TTS configuration.')
@@ -106,7 +116,10 @@ async def upload(request:Request,file:UploadFile=File(...),source_language:str|N
         upload_folders=[part['folder'] for part in parts]
         if await request.is_disconnected():raise HTTPException(499,'Upload cancelled.')
         track_info=[initialize(part['id'],part['info'],ROOT) for part in parts]
-        records=store.add_uploaded(parts,source_language=source_language,target_language=target_language,tts_preset=tts_preset)
+        if subtitle_reference is not None:
+            from subtitle_reference import save_for_parts
+            save_for_parts(subtitle_reference,parts)
+        records=store.add_uploaded(parts,source_language=source_language,target_language=target_language,tts_preset=tts_preset,translation_prompt=translation_prompt)
         results=[{**record,'editor_url':f'/videos/{record["id"]}/edit','audio_tracks':tracks} for record,tracks in zip(records,track_info)]
         return {**results[0],'videos':results,'split':len(results)>1}
     except Exception as error:

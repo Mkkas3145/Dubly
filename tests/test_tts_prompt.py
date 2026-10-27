@@ -7,16 +7,10 @@ from tts_prompt import instructions,language_code,with_transcript_languages
 import render
 
 
-def test_english_prompt_uses_source_and_target_pronunciation_names():
-    assert instructions('ko','jpn')==('Preserve the reference voice and acting. Sound like a native Korean speaker, with natural pronunciation, intonation, stress and rhythm. '
-        'Do not carry over Japanese pronunciation or intonation. Natural adaptation into Korean is allowed.')
-    assert 'Do not carry over English' in instructions('ja','eng')
-    assert 'native Japanese speaker' in instructions('ja','eng')
-    assert 'Do not carry over Korean' in instructions('fr','ko-KR')
-    assert 'native French speaker' in instructions('fr','ko-KR')
-    assert "the source language's pronunciation" in instructions('en',None)
-    assert 'Japanese' not in instructions('en',None)
-    assert 'Do not carry over' not in instructions('en','eng')
+def test_prompt_keeps_the_requested_english_wording_for_every_language_pair():
+    expected='Match the voice, acting, and all other qualities of the reference audio (speaker 0) when dubbing. Speaker 1 serves as a reference for voice identity.'
+    for target,source in [('ko','jpn'),('ja','en'),('fr','ko-KR'),('en',None)]:
+        assert instructions(target,source)==expected
     assert language_code('jpn')=='ja' and language_code('ja-JP')=='ja'
 
 
@@ -47,17 +41,8 @@ def test_actual_requests_and_caches_use_resolved_pair(tmp_path):
     assert sent[0]['input']=='출력' and '<|speaker:' not in sent[0]['input']
 
 
-def test_structured_prompt_preserves_reference_acting_and_uses_selected_language_pair():
+def test_structured_prompt_is_the_same_literal_english_instruction():
     from core import TARGET_LANGUAGES
     from tts_prompt import structured_instructions
     for target in TARGET_LANGUAGES:
-        prompt=structured_instructions(target,'ja')
-        assert '원어민이 말하는 것처럼' in prompt and '목소리와 연기' in prompt
-        assert '각색은 허용합니다.' in prompt
-    assert structured_instructions('ko','ja')==('참조의 목소리와 연기를 유지하며, 한국어 원어민이 말하는 것처럼 자연스러운 발음·억양·강세·리듬으로 더빙하세요. '
-        '일본어 발음·억양은 배제하고, 자연스러운 한국어 각색은 허용합니다.')
-    assert '영어 발음·억양은 배제하고' in structured_instructions('ja','en')
-    assert '자연스러운 일본어 각색은 허용합니다.' in structured_instructions('ja','en')
-    assert '원본 언어의 발음·억양은 배제하고' in structured_instructions('ko',None)
-    assert '일본어' not in structured_instructions('ko',None)
-    assert '배제' not in structured_instructions('ko','kor')
+        assert structured_instructions(target,'ja')=='Match the voice, acting, and all other qualities of the reference audio (speaker 0) when dubbing. Speaker 1 serves as a reference for voice identity.'

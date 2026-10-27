@@ -1,5 +1,6 @@
 'use strict';
 (()=>{
+ const T=(s,v={})=>window.DublyI18n?.t(s,v)||s.replace(/\{(\w+)\}/g,(all,key)=>Object.hasOwn(v,key)?String(v[key]):all);
  const $=id=>document.getElementById(id),video=$('player'),parts=window.DublyPlaylists;
  let id=location.pathname.split('/')[2],api='/api/studio/'+id;
  let timer=null,playlistTimer=null,requested=null,ready=false,epoch=0,playlist=null;
@@ -14,7 +15,7 @@
  async function check(){const token=epoch,currentApi=api;try{
   const result=await request(currentApi);if(token!==epoch)return;
   const doc=result.document,job=result.video;
-  $('title').textContent=job.filename;document.title=job.filename+' · Dubly';
+  $('title').dataset.noI18n='';$('title').textContent=job.filename;document.title=job.filename+' · Dubly';
   if(!doc){fail('아직 편집할 영상이 준비되지 않았습니다.');return}
   if(doc.player_revision===doc.revision&&doc.player_volume_version===doc.volume_policy_version){
    ready=true;$('loading').hidden=true;$('refresh').disabled=false;
@@ -36,21 +37,21 @@
   clearTimeout(timer);clearTimeout(source.timer);source.timer=null;video.pause();ready=false;
   source.started=false;source.pending=null;source.attempts=0;source.resolving=null;
   video.removeAttribute('src');video.load();id=item.id;api='/api/studio/'+id;source.url=api+'/watch-video';startTime=0;resumeOnReady=autoplay;
-  $('back').href=item.edit_url;$('playlist-note').textContent='';$('title').textContent=item.filename;
+  $('back').href=item.edit_url;$('playlist-note').textContent='';$('title').dataset.noI18n='';$('title').textContent=item.filename;
   if(push)history.pushState(null,'',item.watch_url);drawPlaylist();refresh();loadPlaylist();
  }
  const duration=n=>Number.isFinite(n)?`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`:'';
  function drawPlaylist(){
   $('playlist').hidden=!playlist;if(!playlist)return;
-  $('playlist-title').textContent=playlist.title;
+  $('playlist-title').dataset.noI18n='';$('playlist-title').textContent=playlist.title;
   const current=playlist.items.find(item=>item.id===id);
   $('playlist-count').textContent=`${current?.part||1} / ${playlist.parts} · ${playlist.items.length}개 영상`;
   $('playlist-items').replaceChildren();
   for(const item of playlist.items){
    const li=document.createElement('li'),button=document.createElement('button'),meta=document.createElement('span'),edit=document.createElement('a');
-   li.setAttribute('aria-current',String(item.id===id));button.type='button';button.className='playlist-part';button.textContent=`${item.part}번 · ${item.filename}`;
+   li.setAttribute('aria-current',String(item.id===id));button.type='button';button.className='playlist-part';button.textContent=T('{part}번 영상 · {name}',{part:item.part,name:item.filename});
    button.disabled=!item.playable||item.id===id;button.onclick=()=>selectPart(item);
-   meta.textContent=`${duration(item.duration)} · ${item.id===id?'현재 영상':item.playable?'재생 가능':item.phase||'처리 대기'}`;button.append(meta);
+   meta.textContent=`${duration(item.duration)} · ${T(item.id===id?'현재 영상':item.playable?'재생 가능':item.phase||'처리 대기')}`;button.append(meta);
    edit.href=item.edit_url;edit.textContent='편집';edit.setAttribute('aria-label',`${item.part}번 영상 편집`);li.append(button,edit);$('playlist-items').append(li);
   }
   const previous=parts.adjacent(playlist.items,id,-1),next=parts.adjacent(playlist.items,id,1);
@@ -75,5 +76,6 @@
  });
  window.addEventListener('popstate',()=>{const next=location.pathname.split('/')[2];if(next===id)return;const item=playlist?.items.find(item=>item.id===next);if(item?.playable)selectPart(item,false,false);else location.reload()});
  document.addEventListener('keydown',e=>{if(!ready||e.altKey||e.ctrlKey||e.metaKey||e.target.closest('button,a,input,textarea'))return;if(e.code==='Space'){e.preventDefault();if(video.paused)source.play().catch(error=>{if(error.name!=='AbortError')fail(error.message)});else video.pause()}else if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();video.currentTime=Math.max(0,Math.min(video.duration,video.currentTime+(e.key==='ArrowRight'?5:-5)))}else if(e.key.toLowerCase()==='f'){if(document.fullscreenElement)document.exitFullscreen();else video.requestFullscreen?.()}});
+ window.addEventListener('dubly:localechange',drawPlaylist);
  refresh();loadPlaylist();
 })();

@@ -34,3 +34,27 @@ test('translation displays streamed completed lines and translation-only percent
  assert.equal(p.stageText({...job,detail:'구간 번역 0/48개 수신 · 0초'}),'번역 · 0%');
  assert.equal(p.stageText({...job,detail:'구간 번역 48/48개 수신 · 20초'}),'번역 · 100%');
 });
+
+
+test('audio analysis uses streamed source clock coverage, then a separate alignment stage',()=>{
+ const p=context.window.DublyProgress;
+ const job={state:'running',phase:'2/4 전체 음성 전사·번역',phase_progress:85,progress:49,
+  detail:'Gemini 12개 대사 수신 · 41.3% · 08:15 / 20:00 · 23초 경과'};
+ assert.equal(p.stageText(job),'전사·번역 · 41%');
+ assert.equal(p.task(job),'대사 분석 중 · 12개 수신 · 08:15 / 20:00');
+ assert.equal(p.stageText({...job,detail:'MMS-FA 원본 정렬 2/8개 구간'}),'대사 시간 정렬 · 25%');
+ assert.equal(p.stageText({...job,detail:'MMS-FA 원본 정렬 완료 · 48개 대사'}),'대사 시간 정렬 · 100%');
+ assert.equal(p.stagePercent({...job,detail:'Gemini 0개 대사 수신 · 0.0% · 00:00 / 20:00 · 0초 경과'}),0);
+});
+
+
+test('untimed Gemini stream shows each received count without inventing coverage',()=>{
+ const p=context.window.DublyProgress;
+ const job={state:'running',phase:'2/4 전체 음성 전사·번역',phase_progress:4.3,progress:30};
+ for(const count of [0,1,17,192]){
+  const live={...job,detail:`Gemini ${count}개 대사 수신 · 23초 경과`};
+  assert.equal(p.task(live),`대사 전사·번역 중 · ${count}개 수신 · 23초 경과`);
+  assert.equal(p.stageText(live),'전사·번역');
+ }
+ assert.equal(p.task({...job,state:'done',detail:'Gemini 192개 대사 수신 · 23초 경과'}),'완료');
+});

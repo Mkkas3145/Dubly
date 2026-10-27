@@ -9,7 +9,7 @@ from packaging.requirements import Requirement
 from packaging.markers import default_environment
 
 APP=Path(__file__).resolve().parents[1]
-ROOTS=['torch','torchaudio','pytorch-lightning','fastapi','uvicorn','pydantic','python-multipart','python-dotenv','soundfile','librosa','PyYAML','beartype','rotary-embedding-torch','einops','huggingface-hub','faster-whisper','scipy','numba','transformers','uroman','panphon','SudachiPy','sudachidict_core','filelock']
+ROOTS=['torch','torchaudio','pytorch-lightning','fastapi','uvicorn','pydantic','python-multipart','python-dotenv','soundfile','librosa','PyYAML','beartype','rotary-embedding-torch','einops','huggingface-hub','faster-whisper','scipy','numba','transformers','uroman','panphon','SudachiPy','sudachidict_core','filelock','pycountry','num2words']
 
 
 def dependencies():
@@ -72,7 +72,10 @@ def main():
     tree(APP/'vendor/mel-band-roformer',server/'vendor/mel-band-roformer',('.ckpt','.pth'))
     tree(APP/'vendor/mel-band-roformer-deux',server/'vendor/mel-band-roformer-deux')
     add(APP/'models/mel-band-roformer-deux.ckpt',server/'models/mel-band-roformer-deux.ckpt')
-    tree(APP/'models/mfa/pretrained_models',server/'models/mfa/pretrained_models')
+    add(APP/'models/mms-forced-aligner/model.pt',server/'models/mms-forced-aligner/model.pt')
+    for kind,extension in (('acoustic','zip'),('dictionary','dict'),('g2p','zip')):
+        name=f'models/mfa/pretrained_models/{kind}/korean_mfa.{extension}'
+        add(APP/name,server/name)
     for name in ('worker.py','build.json','windows/speedy.dll'):add(APP/'tools/google-speedy'/name,server/'tools/google-speedy'/name)
     for name in ('speedy','sonic','kissfft'):tree(APP/'tools/google-speedy'/name,server/'tools/google-speedy'/name,('.obj','.o','.so','.dll','.exe'))
     python=out/'runtime/python';python.mkdir(parents=True,exist_ok=True)
@@ -82,7 +85,7 @@ def main():
     for name,dist in packages.items():
         for relative in dist.files or []:
             relative=Path(relative)
-            if relative.is_absolute() or '..' in relative.parts or '__pycache__' in relative.parts or relative.suffix in ('.pyc','.pdb'):continue
+            if relative.is_absolute() or '..' in relative.parts or any(part in ('__pycache__','tests','test','benchmarks') for part in relative.parts) or relative.suffix in ('.pyc','.pdb'):continue
             source=dist.locate_file(relative)
             if source.is_file():add(source,site/relative)
     # Runtime binaries are app-local; the target PC needs no separate VC installer.

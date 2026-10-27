@@ -23,13 +23,11 @@ def test_actual_payload_keeps_reference_tags_and_instruction_without_output_tags
     assert 19 not in indices and 20 not in indices
     assert indices[1:]==sorted(indices[1:])
     actual,rate=sf.read(row['_shared_reference_path'],always_2d=True)
-    assert len(actual)==round(30.5*SR)
-    np.testing.assert_array_equal(actual[:SR//2],0)
-    np.testing.assert_array_equal(actual[-SR//2:],0)
+    assert len(actual)==20*SR
     for slot,i in enumerate(indices):
-        start=SR//2+slot*(SR+SR//2)
-        np.testing.assert_allclose(actual[start:start+SR],(i+1)/32,atol=.0001)
-        if slot<len(indices)-1:np.testing.assert_array_equal(actual[start+SR:start+SR+SR//2],0)
+        start=slot*SR
+        expected=render.reference_fade_edges(np.full(SR,(i+1)/32,dtype=np.float32),SR)
+        np.testing.assert_allclose(actual[start:start+SR,0],expected,atol=.0001)
     payloads=[]
     class Reply(io.BytesIO):headers={}
     def reply(request,**kwargs):payloads.append(json.loads(request.data));return Reply(b'audio')
@@ -58,8 +56,8 @@ def test_small_voice_and_unknowns_do_not_borrow_other_voices(tmp_path):
     assert segments[3]['_shared_reference_indices']==[3]
     assert segments[0]['_shared_reference_text']=='source 0\n<|speaker:1|>source 1'
     assert segments[2]['_shared_reference_text']=='source 2'
-    assert sf.info(segments[0]['_shared_reference_path']).frames==round(3.5*SR)
-    assert sf.info(segments[2]['_shared_reference_path']).frames==2*SR
+    assert sf.info(segments[0]['_shared_reference_path']).frames==2*SR
+    assert sf.info(segments[2]['_shared_reference_path']).frames==SR
 
 
 def test_pipeline_defaults_select_grouped_references_individual_generation():
@@ -76,7 +74,7 @@ def test_reference_preparation_does_not_set_duration_hint(tmp_path):
     clean=tmp_path/'clean.wav';sf.write(clean,np.full((5*SR,1),.1,np.float32),SR)
     prepare(segments,clean,tmp_path,only_indices=[0])
     assert '_output_audio_tokens' not in segments[0]
-    assert sf.info(segments[0]['_shared_reference_path']).duration==6.5
+    assert sf.info(segments[0]['_shared_reference_path']).duration==5.
 
 
 def test_stale_duration_metadata_does_not_add_output_hint(tmp_path):
@@ -121,7 +119,7 @@ def test_reference_stops_after_whole_lines_reach_thirty_seconds(tmp_path):
  prepare(segments,clean,tmp_path,only_indices=[4])
  row=segments[4];assert row['_shared_reference_indices']==[4,3,5]
  receipt=json.loads(__import__('pathlib').Path(row['_shared_reference_path']).with_suffix('.json').read_text('utf8'))
- assert receipt['content_seconds']==30 and receipt['reference_seconds']==32
+ assert receipt['content_seconds']==30 and receipt['reference_seconds']==30
 
 
 def test_current_reference_over_thirty_seconds_needs_no_donors(tmp_path):

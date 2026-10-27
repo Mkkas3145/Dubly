@@ -13,7 +13,7 @@
   const result=row?row[column[locale]]:source;
   return result.replace(/\{(\w+)\}/g,(whole,key)=>Object.hasOwn(params,key)?String(params[key]):whole);
  }
- function protectedNode(node){const parent=node.nodeType===3?node.parentElement:node;return !parent||!!parent.closest('script,style,textarea,[data-no-i18n],.speaker-button');}
+ function protectedNode(node){const parent=node.nodeType===3?node.parentElement:node;return !parent||!!parent.closest('script,style,[data-no-i18n],.speaker-button')||(node.nodeType===3&&!!parent.closest('textarea'));}
  function translateNode(node){
   if(protectedNode(node))return;
   if(node.nodeType===3){const value=node.nodeValue,old=bindings.get(node),source=old&&old.output===value?old.source:value,trimmed=source.trim();if(!trimmed)return;const output=source.replace(trimmed,t(trimmed));if(output!==source||old){bindings.set(node,{source,output});if(value!==output)node.nodeValue=output}}

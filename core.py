@@ -7,14 +7,14 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parent
 SR = 44100
-GEMINI = 'google/gemini-3.8-flash'
+GEMINI = 'google/gemini-4-argon'
 QWEN = 'qwen/qwen3.8-omni-flash'
 FISH = 'fish-audio/drama-3'
 TTS_CONCURRENCY = 20
 FIT_CONCURRENCY = 40
 DEFAULT_SEPARATOR = 'mel-band-roformer-deux'
 DEFAULT_BACKGROUND = 'mel-band-roformer-deux'
-DEFAULT_DIARIZER = 'scribe-v2'
+DEFAULT_DIARIZER = 'gemini-forced'
 MODEL_HASH = '87201f4d31afb5bc79993230fc49446918425574db48c01c405e44f365c7559e'
 LANGUAGE_CATALOG=json.loads((ROOT/'assets/languages.json').read_text(encoding='utf8'))
 SOURCE_LANGUAGES=frozenset(LANGUAGE_CATALOG['source'])
@@ -41,6 +41,10 @@ def video_languages(cfg,job):
     """Persisted upload choices override global defaults, without changing .env."""
     from tts_presets import configure
     result=configure(cfg,job)
+    result['translation_prompt']=(job.get('translation_prompt') or cfg.get('translation_prompt') or '').strip()
+    from subtitle_reference import load_for_video
+    reference=load_for_video(job.get('id'),ROOT)
+    if reference:result['translation_reference']=reference
     source,target=job.get('source_language'),job.get('target_language')
     if source is None and target is None:return result
     if source not in SOURCE_SELECTIONS or target not in TARGET_LANGUAGES or source==target:

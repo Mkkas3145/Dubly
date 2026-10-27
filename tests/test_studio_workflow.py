@@ -169,7 +169,7 @@ def test_moved_clip_preserves_reference_removal_and_uses_output_position(tmp_pat
  from render import speech_placements,replacement_intervals
  segments=[{'lo':SR,'hi':2*SR,'output_start_frame':round(.5*SR)}];sf.write(tmp_path/'0000-fitted.wav',np.zeros((SR,2),np.float32),SR)
  placement=speech_placements(segments,tmp_path);assert placement[0]['lo']==round(.5*SR)
- intervals=replacement_intervals(segments,3*SR,placement);assert intervals[0]['lo']<round(.5*SR) and intervals[0]['hi']>=2*SR
+ intervals=replacement_intervals(segments,3*SR,placement);assert intervals[0]['lo']==round(.5*SR) and intervals[0]['hi']>=2*SR
 
 
 def test_windowed_preview_and_zoom_waveform_are_bounded_read_only_and_preserve_samples(tmp_path):
@@ -404,7 +404,7 @@ def test_individual_generation_reference_follows_generation_mode(tmp_path,monkey
   assert ('_shared_reference_path' in row)==bool(batch_mode)
   if batch_mode:
    assert row['_shared_reference_indices']==[1]
-   assert sf.info(row['_shared_reference_path']).duration==pytest.approx(2. if batch_mode=='tagged_context' else 1.)
+   assert sf.info(row['_shared_reference_path']).duration==pytest.approx(1.)
   calls.append(i);return {'index':i}
  monkeypatch.setattr(render,'generate_speech',prepare)
  def fit(p,cfg):
@@ -664,7 +664,7 @@ def test_watch_api_checks_revision_and_reuses_current_player(tmp_path):
   assert client.post(endpoint,json={'confirmed':True,'revision':1}).status_code==200
   assert store.get(id)['workflow_action']=='watch'
   store.update(id,state='ready')
-  doc['player_revision']=1;doc['player_volume_version']=__import__('studio_workflow').VOLUME_VERSION;atomic_json(paths(id,tmp_path)[1],doc)
+  doc['player_revision']=1;doc['player_volume_version']=__import__('studio_workflow').VOLUME_VERSION;doc['player_mix_version']=__import__('studio_workflow').transition_policy()['version'];atomic_json(paths(id,tmp_path)[1],doc)
   target=paths(id,tmp_path)[0]/'player/video.mp4';target.parent.mkdir();target.write_bytes(b'video')
   assert client.get('/api/studio/'+id+'/watch-video',headers={'Range':'bytes=0-1'}).status_code==206
   response=client.post(endpoint,json={'confirmed':True,'revision':1})

@@ -210,7 +210,7 @@ def fixed_rows(rows):
     return result
 
 
-def review_region_context(context,row):
+def review_region_context(context,row,*,include_text=True):
     """Expose only word clocks consistent with the final corrected audio range."""
     a,b=row['start'],row['end'];words=row['words'];valid=[]
     for w in words:
@@ -220,10 +220,14 @@ def review_region_context(context,row):
         if not i or not valid[i] or not any(c.isalnum() for c in w.get('word','')):continue
         preceding=[p for j,p in enumerate(words[:i]) if valid[j] and any(c.isalnum() for c in p.get('word',''))]
         if preceding and max(p['end'] for p in preceding)<=w['start']:allowed.append(w['word_id'])
-    return {**context,'source_text':row['text'],
+    result={**context,'source_text':row['text'],
         'words':[[w[0],w[1] if valid[i] else None,w[2] if valid[i] else None,w[3]] for i,w in enumerate(context['words'])],
         'split_before_word_ids':allowed,
         'timing_note':'Only audio_range is the corrected authoritative region. null word times are untrusted; never use them to place a split.'}
+    if not include_text:
+        result.pop('source_text',None);result.pop('speaker',None)
+        result['words']=[w[:3] for w in result['words']]
+    return result
 
 
 def include_unspoken_words(words,parts):
@@ -442,7 +446,15 @@ def complete_nicknames(values,rows,cfg,folder,progress):
     return values,report
 
 
-def review(clean,rows,work,cfg,progress=lambda *a:None):
+
+AUDIO_ONLY_PROMPT = """Listen to the complete original-clock dialogue recording. No transcript or ASR speaker labels are provided. Inputs contain region IDs, corrected audio_range, and word anchors [ID,start,end] ONLY. Anchor IDs locate positions in the audio; never transcribe, translate, quote speech, output dialogue, or invent timestamps.
+Tasks: identify consistent audible speakers; supply detailed ENGLISH delivery cues for every part; use inline cues at meaningful delivery changes; split only for an actual speaker change or when cues alone cannot represent distinct deliveries faithfully and separate reference audio is needed. Keep connected semantic units together; do not detach short continuations or split words. Use only permitted split_before_word_ids for additional parts. A region with no permitted split has ONE part; use speaker null if multiple voices cannot be separated safely.
+Compare familiar voices with earlier clear examples using timbre, resonance, articulation and habitual vocal texture. Emotion, shouting, whispering or crying alone does not make a different person. Similar age, pitch or gender does not make two distinct voices the same person. Assign any consistent nonnegative speaker ID, with no count cap. Use conversational context only as a last resort for acoustically plausible candidates; never let imagined roles override audible identity. Use null if genuinely uncertain.
+Describe what is HEARD, not emotions inferred from dialogue meaning. Describe actual loudness, softness, register, breath, tension, tremble, tears, breaks, pacing, hesitations, stress, intensity and changes when audible. Intent may be included only when supported by audible delivery and must not replace HOW the voice sounds. Do not reduce mixed delivery to two generic labels, invent checklist traits, or exaggerate neutral speech. Audio length never excuses skipping details or later regions. Every part requires its own English cue, including neutral speech.
+Return compact JSON only: {"segments":[{"id":0,"parts":[{"e":null,"s":0,"c":"quiet, breathy, hesitant","m":[{"i":3,"c":"voice tightens, trembling"}]}]}],"speakers":[{"id":0,"nickname":"name"}]}. e is the inclusive LAST word-anchor ID of a part; use null ONLY for the final part of EACH region. s is speaker integer or null. c is the initial English cue without brackets; optional m gives internal cues before anchor ID i. Cover each supplied region and anchor exactly once in order, without moving anchors across regions. Output only annotations, never source speech or punctuation edits. Give useful short speaker nicknames in NICKNAME_LANGUAGE based on the heard recording; mark inferred names uncertain. Nicknames must never determine speaker grouping. Return segments first, then speakers. No Markdown, reasoning or explanations."""
+
+
+def review(clean,rows,work,cfg,progress=lambda *a:None,*,send_transcript=True):
     from qwen_audio_pipeline import encode_audio,digest
     if not rows:return rows,{'policy':POLICY,'requests':0,'changes':[]}
     inputs=fixed_rows(rows);folder=Path(work)/'qwen-performance-turns';(folder/'audio').mkdir(parents=True,exist_ok=True)
@@ -450,7 +462,9 @@ def review(clean,rows,work,cfg,progress=lambda *a:None):
     context=[{'id':r['id'],'speaker':r['speaker'],'audio_range':[r['start'],r['end']],
         'words':[[w['word_id'],w['start'],w['end'],w.get('rich_surface',w['word'])] for w in r['words']]} for r in inputs]
     prompt=nickname_language_instruction(cfg['language'])+'\n'+PROMPT.replace('NICKNAME_LANGUAGE',LANGUAGES[cfg['language']])+' Emit compact JSON without indentation or extra whitespace, using e, s and c for each part, with optional m and p; never echo source dialogue. Emit the segments array first, then speakers. Start directly with the JSON object, without commentary or Markdown. Never use an empty parts array for an unchanged region.'
+    if not send_transcript:prompt=AUDIO_ONLY_PROMPT.replace('NICKNAME_LANGUAGE',LANGUAGES[cfg['language']])
     signature={'policy':POLICY,'prompt':prompt,'regions':context,'audio':manifest}
+    signature['input_mode']='transcript_and_audio' if send_transcript else 'audio_and_numeric_anchors_only'
     run=folder/hashlib.sha256(json.dumps(signature,sort_keys=True,ensure_ascii=False).encode()).hexdigest();run.mkdir(exist_ok=True)
     atomic_json(run/'input.json',signature);cache=run/'result.json'
     saved=json.loads(cache.read_text('utf8')) if cache.exists() else {}
@@ -462,13 +476,14 @@ def review(clean,rows,work,cfg,progress=lambda *a:None):
             'm':{'type':'array','items':{'type':'object','properties':{'i':{'type':'integer'},'c':{'type':'string'}},'required':['i','c'],'additionalProperties':False}},
             'p':{'type':'array','items':{'type':'object','properties':{'i':{'type':'integer'},'b':{'type':'string'},'a':{'type':'string'}},'required':['i'],'additionalProperties':False}}},
             'required':['e','s','c'],'additionalProperties':False}
+        if not send_transcript:part['properties'].pop('p')
         item={'type':'object','properties':{'id':{'type':'integer'},'parts':{'type':'array','items':part,'minItems':1}},'required':['id','parts'],'additionalProperties':False}
         speaker={'type':'object','properties':{'id':{'type':'integer'},'nickname':{'type':'string'}},'required':['id','nickname'],'additionalProperties':False}
         schema={'type':'object','properties':{'segments':{'type':'array','items':item},'speakers':{'type':'array','items':speaker}},'required':['segments','speakers'],'additionalProperties':False}
         payload={'model':QWEN,'max_tokens':POLICY['max_tokens'],'reasoning':{'enabled':False},'stream':True,'provider':{'require_parameters':True},
             'response_format':{'type':'json_schema','json_schema':{'name':'performance_turns','strict':True,'schema':schema}},
             'messages':[{'role':'system','content':prompt},{'role':'user','content':[
-                {'type':'text','text':json.dumps(context,ensure_ascii=False,separators=(',',':'))},
+                {'type':'text','text':json.dumps([review_region_context(r,inputs[i],include_text=send_transcript) for i,r in enumerate(context)],ensure_ascii=False,separators=(',',':'))},
                 {'type':'input_audio','input_audio':{'format':'mp3','data':base64.b64encode(audio.read_bytes()).decode()}}]}]}
         partial=run/'partial.json';accepted={};collected_names={};failures=[];receipts=[];requests_made=0
         by_id={row['id']:row for row in inputs}
@@ -520,11 +535,12 @@ def review(clean,rows,work,cfg,progress=lambda *a:None):
             locked=[{'id':row['id'],'audio_range':[row['start'],row['end']],
                      'voices':[{'w':[p['first_word_id'],p['last_word_id']],'s':p['speaker']} for p in expand_annotations(row,accepted[row['id']]['parts'])]}
                 for row in inputs if row['id'] in accepted]
-            current=[review_region_context(row,by_id[row['id']]) for row in context if row['id'] in pending_ids]
+            current=[review_region_context(row,by_id[row['id']],include_text=send_transcript) for row in context if row['id'] in pending_ids]
             payload['messages'][1]['content'][0]['text']=json.dumps({'pending_regions':current,'accepted_regions':locked},ensure_ascii=False,separators=(',',':'))
             extra=' Review ONLY pending_regions and return each of them with nonempty parts. accepted_regions are already validated: do not return or change them. Keep the same speaker ID when the same audible voice returns; unused IDs remain allowed. All word IDs and the full attached audio clock remain unchanged.'
             extra+=' Split timing constraint: audio_range is the corrected region. Some original ASR word times are unusable and are supplied as null. Start each additional part ONLY at a word ID in split_before_word_ids. An empty list means return exactly ONE part covering all words; still review its speaker and punctuation. If multiple people speak in such an unsplittable region, use speaker:null instead of merging their identities or inventing split times. Never split a zero-duration or unanchored hesitation into a separate part.'
-            if failures:extra+=' The last response error was '+failures[-1][:160]+'. The last response was invalid. Preserve the audible details in inline English cues; return JSON with no commentary, empty parts or repeated regions.'
+            if not send_transcript:extra=extra.replace('speaker and punctuation','speaker and delivery')
+            if failures and send_transcript:extra+=' The last response error was '+failures[-1][:160]+'. The last response was invalid. Preserve the audible details in inline English cues; return JSON with no commentary, empty parts or repeated regions.'
             payload['messages'][0]['content']=prompt+extra
             def waiting(p,d):
                 progress(min(99,100*len(accepted)/len(inputs)),f'감정 전환·화자 보정 응답 대기 · 완료 {len(accepted)}/{len(inputs)}개 · 시도 {attempt+1}/{POLICY["max_attempts"]}') if p==0 else progress(p,d)
@@ -552,11 +568,18 @@ def review(clean,rows,work,cfg,progress=lambda *a:None):
         values={'segments':[accepted[i] for i in sorted(accepted)],'speaker_names':collected_names}
         revised,audit=apply(inputs,values)
         receipt={'requests':requests_made,'attempt_receipts':receipts,'resumed_regions':initial_count}
-        values,nickname_report=complete_nicknames(values,revised,cfg,run,progress)
+        if send_transcript:
+            values,nickname_report=complete_nicknames(values,revised,cfg,run,progress)
+        else:
+            # Never send source dialogue in a separate nickname fallback request.
+            names=values.setdefault('speaker_names',{})
+            for row in revised:
+                if row['speaker']!='unknown':names.setdefault(str(row['speaker']),('화자 ' if cfg['language']=='ko' else 'Speaker ')+str(row['speaker']))
+            nickname_report={'requests':0,'fallback':'local_labels_only_no_transcript_request'}
         receipt['nickname_review']=nickname_report
         atomic_json(cache,{'signature':signature,'values':values,'receipt':receipt})
     names=normalize(values,inputs)['speaker_names']
-    report={'policy':POLICY,**receipt,'changes':audit,'speaker_names':names,'input_regions':len(rows),'output_regions':len(revised),'audio':manifest}
+    report={'policy':POLICY,'transcript_sent':send_transcript,**receipt,'changes':audit,'speaker_names':names,'input_regions':len(rows),'output_regions':len(revised),'audio':manifest}
     atomic_json(folder/'audit.json',report)
     progress(100,f'감정 전환·화자 구분 확인 완료 · {len(revised)}개 대사')
     return revised,report

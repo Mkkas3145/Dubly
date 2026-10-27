@@ -10,10 +10,10 @@ import soundfile as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from core import GEMINI, LANGUAGES, atomic_json, command
 
-TRANSCRIPTION_VERSION=41
+TRANSCRIPTION_VERSION=46
 OUTPUT_SCHEMA_VERSION=9
-# OpenRouter's model-level top_provider.max_completion_tokens for Gemini 4 Argon.
-MAX_OUTPUT_TOKENS=65536
+# Argon long output: reserve half the unified 1M context for audio and prompts.
+MAX_OUTPUT_TOKENS=524288
 # Conservative local budget for the base64 audio portion, not a provider limit.
 AUDIO_BASE64_BUDGET=18*1024**2
 AUDIO_BITRATES=(64,48,32,24)
@@ -260,7 +260,7 @@ class SegmentStreamCounter:
             if self.allowed is not None and isinstance(value,dict) and not voice_entry:
                 identifier=value.get('id',value.get('region_id'))
                 if str(identifier) in self.allowed:self.unrecognized_region_ids.add(str(identifier))
-            if voice_number or voice_entry or value is None or isinstance(value,str) or (isinstance(value,list) and len(value)==2 and all(isinstance(s,str) for s in value)) or (isinstance(value,dict) and (all(k in value for k in ('start','end','original_text','translated_text')) or all(k in value for k in ('t','w')) or 'p' in value)):
+            if voice_number or voice_entry or value is None or isinstance(value,str) or (isinstance(value,list) and len(value)==2 and all(isinstance(s,str) for s in value)) or (isinstance(value,dict) and (all(k in value for k in ('original_text','translated_text')) or all(k in value for k in ('t','w')) or (set(value)=={'t','c'} and (value['t'] is None or isinstance(value['t'],str)) and isinstance(value['c'],list)) or 'p' in value)):
                 if self.numbered:
                     if self.allowed is not None and key not in self.allowed:
                         self.rejected_keys.append(key);continue
@@ -450,13 +450,8 @@ def normalize(segments,excluded,preserve_speakers=False):
 
 
 def transcribe(clean,work,output,cfg,progress,source_transcription=None):
-    """ASR supplies words, speakers and times; Gemini translates text only."""
-    mode=cfg.get('diarizer','scribe-v2')
-    if mode=='fish-transcribe-1-pro':
-        from fish_pipeline import translate as analyze
-    elif mode=='scribe-v2':
-        from scribe_pipeline import transcribe as analyze
-    else:raise ValueError('Unsupported transcription pipeline.')
+    """Gemini analyzes audio; local forced alignment owns final source times."""
+    from gemini_source_pipeline import transcribe as analyze
     return analyze(clean,work,output,cfg,progress)
 
 

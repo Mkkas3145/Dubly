@@ -38,23 +38,33 @@
   for(let i=0;i<count;i++){const a=mappedStart+i/count*duration-padStart,b=mappedStart+(i+1)/count*duration-padStart;if(b<=mappedStart||a>=mappedEnd)continue;
    let inserted=false,shift=0;for(const op of operations){const at=op.at/rate+shift;if(op.amount>0&&a>=at&&b<=at+op.amount/rate){inserted=true;break}shift+=op.amount/rate}if(inserted)continue;
    const rawA=mapTime(info,edit,a,true),rawB=mapTime(info,edit,b,true),lo=clamp(Math.floor(rawA/info.duration*info.peaks.length),0,info.peaks.length-1),hi=clamp(Math.max(lo+1,Math.ceil(rawB/info.duration*info.peaks.length)),1,info.peaks.length);for(let j=lo;j<hi;j++)out[i]=Math.max(out[i],info.peaks[j]);
-  }const result={duration:duration/(trim?(edit.speed||1):1),peaks:out,map:t=>mapTime(info,edit,t)+padStart,unmap:t=>mapTime(info,edit,t-padStart,true)};cache.set(key,result);if(cache.size>4)cache.delete(cache.keys().next().value);waveViews.set(info,cache);return result;
+  }if(trim&&(edit.fade_in>0||edit.fade_out>0)){const speed=edit.speed||1,body=(mappedEnd-mappedStart)/speed;for(let i=0;i<count;i++){const t=(i+.5)/count*duration/speed-padStart/speed;out[i]*=fadeGain(t,body,edit)}}const result={duration:duration/(trim?(edit.speed||1):1),peaks:out,map:t=>mapTime(info,edit,t)+padStart,unmap:t=>mapTime(info,edit,t-padStart,true)};cache.set(key,result);if(cache.size>4)cache.delete(cache.keys().next().value);waveViews.set(info,cache);return result;
  }
  function editPCM(channels,rate,info,edit={}){
   const lo=Math.round((edit.trim_start||0)*rate),hi=Math.round((edit.trim_end??info.duration)*rate),ops=edits({...info,sampleRate:rate},edit,true),length=hi-lo+ops.reduce((n,p)=>n+p.amount,0),guard=Math.round(.005*rate);
   const before=Math.round((edit.pad_start||0)*rate),after=Math.round((edit.pad_end||0)*rate);
   return channels.map(source=>{const out=new Float32Array(Math.max(1,length+before+after));let cursor=lo,offset=before;for(const op of ops){out.set(source.subarray(cursor,op.at),offset);offset+=op.at-cursor;if(op.amount<0)cursor=op.at-op.amount;else{const bridge=Math.min(guard,Math.floor(op.amount/2));if(bridge>1)for(let i=0;i<bridge;i++){out[offset+i]=source[op.at-1]*(1-i/(bridge-1));out[offset+op.amount-bridge+i]=source[op.at]*i/(bridge-1)}offset+=op.amount;cursor=op.at}}out.set(source.subarray(cursor,hi),offset);return out});
  }
- function weight(time,intervals,preserved=[]){if(preserved.some(r=>r.start<=time&&time<r.end))return 0;let value=0;for(const p of intervals)value=Math.max(value,clamp(Math.min((time-(p.start-.2))/.2,((p.end+.2)-time)/.2),0,1));return value}
- window.DublyPreviewMath={waveform,editPCM,mapTime,weight,fitDuration};
+ function fadeLengths(edit={},duration=0){let a=Math.max(0,Number(edit.fade_in)||0),b=Math.max(0,Number(edit.fade_out)||0);if(a+b>duration&&a+b>0){const scale=Math.max(0,duration)/(a+b);a*=scale;b*=scale}return {in:a,out:b}}
+ function fadeGain(time,duration,edit={}){const f=fadeLengths(edit,duration);let gain=1;if(f.in>0&&time<f.in)gain*=Math.sin(clamp(time/f.in,0,1)*Math.PI/2);if(f.out>0&&time>duration-f.out)gain*=Math.sin(clamp((duration-time)/f.out,0,1)*Math.PI/2);return gain}
+ function editedEdgeFades(info,edit={}){return {start:(edit.fade_in||0)>0,end:(edit.fade_out||0)>0}}
+ function fadePCM(channels,rate,info,edit={}){
+  if(!(edit.fade_in>0)&&!(edit.fade_out>0))return channels;
+  return channels.map(source=>{const out=source.slice(),speed=edit.speed||1,start=Math.min(out.length,Math.round((edit.pad_start||0)*rate/speed)),end=Math.max(start,out.length-Math.round((edit.pad_end||0)*rate/speed)),n=end-start,f=fadeLengths(edit,n/rate);
+   for(const [seconds,reverse] of [[f.in,false],[f.out,true]]){const count=Math.min(n,Math.round(seconds*rate));for(let i=0;i<count;i++){const gain=count>1?Math.sin(i/(count-1)*Math.PI/2):0;out[reverse?end-1-i:start+i]*=gain}}return out});
+ }
+ function fadeGeometry(info,edit={},width){const view=waveform(info,edit,false),lo=edit.trim_start||0,hi=edit.trim_end??info.duration,speed=edit.speed||1,a=view.map(lo),b=view.map(hi),duration=Math.max(0,(b-a)/speed),f=fadeLengths(edit,duration),x=t=>12+t/view.duration*(width-24),start=x(a),end=x(b),inEnd=x(a+f.in*speed),outStart=x(b-f.out*speed);let inHandle=inEnd,outHandle=outStart;if(outHandle-inHandle<14){const middle=(inHandle+outHandle)/2;inHandle=middle-7;outHandle=middle+7}return {start,end,inEnd,outStart,inHandle,outHandle,fadeIn:f.in,fadeOut:f.out,duration,speed,view}}
+
+ function weight(time,intervals,preserved=[],seconds=.1){if(preserved.some(r=>r.start<=time&&time<r.end))return 0;let value=0;const fade=Math.max(.000001,seconds);for(const p of intervals)value=Math.max(value,p.start<=time&&time<=p.end?1:clamp(Math.min((time-(p.start-fade))/fade,((p.end+fade)-time)/fade),0,1));return value}
+ window.DublyPreviewMath={waveform,editPCM,mapTime,weight,fitDuration,editedEdgeFades,fadePCM,fadeLengths,fadeGain,fadeGeometry};
 
  class Preview{
   constructor({video,api,getDoc,getWave,save,status}){Object.assign(this,{video,api,getDoc,getWave,save,status});this.enabled=true;this.epoch=0;this.sources=[];this.buffers=new Map();this.pending=new Map();this.edited=new Map();this.next=0;this.timer=setInterval(()=>this.pump(),180)}
   context(){if(!this.ctx){this.ctx=new AudioContext();this.output=this.ctx.createGain();this.output.gain.value=this.video.volume;this.output.connect(this.ctx.destination)}return this.ctx}
   async buffer(key,url){if(this.buffers.has(key))return this.buffers.get(key);if(this.pending.has(key))return this.pending.get(key);const promise=fetch(url).then(async r=>{if(!r.ok)throw Error('미리듣기 오디오를 불러오지 못했습니다.');return this.context().decodeAudioData(await r.arrayBuffer())}).then(buffer=>{this.buffers.set(key,buffer);let bytes=0;for(const [k,b] of [...this.buffers].reverse()){bytes+=b.length*b.numberOfChannels*4;if(bytes>80*1024*1024)this.buffers.delete(k)}return buffer}).finally(()=>this.pending.delete(key));this.pending.set(key,promise);return promise}
-  async clip(row){const edit=JSON.parse(JSON.stringify(row.audio_edit||{})),gainDb=this.getDoc().tts_gain_db??0,key=row.id+':'+row.audio_key+':'+gainDb+':'+JSON.stringify({...edit,position:undefined});if(this.edited.has(key))return this.edited.get(key);const info=await this.getWave(row.id);let buffer;
+  async clip(row){const edit=JSON.parse(JSON.stringify(row.audio_edit||{})),gainDb=this.getDoc().tts_gain_db??0,key=row.id+':'+row.audio_key+':'+gainDb+':'+JSON.stringify({...edit,position:undefined,edge_fades:row.audio_edge_fades});if(this.edited.has(key))return this.edited.get(key);const info=await this.getWave(row.id);let buffer;
    if((edit.speed||1)>1){await this.save();buffer=await this.buffer(key,`${this.api}/segments/${row.id}/audio?kind=edited&v=${this.getDoc().revision}`)}
-   else{const base=await this.buffer('base:'+row.id+':'+row.audio_key,`${this.api}/segments/${row.id}/audio?kind=base&v=${encodeURIComponent(row.audio_key||'')}`),channels=editPCM(Array.from({length:base.numberOfChannels},(_,c)=>base.getChannelData(c)),base.sampleRate,info,edit);buffer=this.context().createBuffer(channels.length,channels[0].length,base.sampleRate);channels.forEach((x,c)=>buffer.copyToChannel(x,c))}
+   else{const base=await this.buffer('base:'+row.id+':'+row.audio_key,`${this.api}/segments/${row.id}/audio?kind=base&v=${encodeURIComponent(row.audio_key||'')}`),channels=fadePCM(editPCM(Array.from({length:base.numberOfChannels},(_,c)=>base.getChannelData(c)),base.sampleRate,info,edit),base.sampleRate,info,edit,row.audio_edge_fades);buffer=this.context().createBuffer(channels.length,channels[0].length,base.sampleRate);channels.forEach((x,c)=>buffer.copyToChannel(x,c))}
    const value={buffer,gain:10**(gainDb/20)};this.edited.set(key,value);if(this.edited.size>24)this.edited.delete(this.edited.keys().next().value);return value;
   }
   stop(){this.epoch++;this.next=0;for(const source of this.sources){try{source.stop()}catch{}}this.sources=[];this.preparing=false}
@@ -63,9 +73,10 @@
   async schedule(epoch){if(this.preparing||epoch!==this.epoch)return;this.preparing=true;try{const doc=this.getDoc(),start=this.next,tile=Math.floor(start/12)*12,end=Math.min(tile+12,doc.duration);if(end<=start+.001)return;const kind=doc.has_background?'background':'clean',original=await this.buffer('original:'+tile,`${this.api}/preview-source?kind=original&start=${tile}&end=${end}`),bed=await this.buffer(kind+':'+tile,`${this.api}/preview-source?kind=${kind}&start=${tile}&end=${end}`);
    const rows=doc.segments.filter(r=>r.audio_ready&&!r.audio_error&&!r.keep_original),clips=new Map();await Promise.all(rows.filter(r=>{const at=r.audio_edit?.position??r.start;return at<end+.5&&at+(r.audio_seconds||r.end-r.start)+(r.audio_edit?.pauses||[]).reduce((n,p)=>n+p.seconds,0)>start-.5}).map(async r=>clips.set(r.id,await this.clip(r))));if(epoch!==this.epoch||this.video.paused)return;
    const rate=this.video.playbackRate,when=this.anchorClock+(start-this.anchorMedia)/rate;if(when<this.ctx.currentTime-.12){this.preparing=false;return this.start()}
+   const margin=doc.replacement_margin_seconds??0,fade=doc.transition_seconds??.1;
    const lengths=doc.segments.map(r=>{const info=this.getWaveSync?.(r.id);return clips.get(r.id)?.buffer.duration||(info?waveform(info,r.audio_edit).duration:0)||((r.audio_edit?.trim_end??r.audio_seconds??r.end-r.start)-(r.audio_edit?.trim_start||0))/(r.audio_edit?.speed||1)}),intervals=[];
-   for(let i=0;i<doc.segments.length;i++){const r=doc.segments[i];if(!r.audio_ready||r.audio_error||r.keep_original)continue;const pos=r.audio_edit?.position??r.start,hi=Math.max(r.end,pos+lengths[i]),previous=i?Math.max(doc.segments[i-1].end,(doc.segments[i-1].audio_edit?.position??doc.segments[i-1].start)+lengths[i-1]):0,left=i?Math.min(r.start,(previous+r.start)/2):0,right=i+1<doc.segments.length?Math.max(hi,(hi+doc.segments[i+1].start)/2):doc.duration;intervals.push({start:pos<r.start?Math.max(0,pos-.2):Math.max(left,r.start-.2),end:Math.min(right,hi+.2)})}
-   const preserved=doc.segments.filter(r=>r.keep_original||r.audio_error||!r.audio_ready),curveCount=4096,curve=new Float32Array(curveCount);for(let i=0;i<curveCount;i++)curve[i]=weight(start+i/(curveCount-1)*(end-start),intervals,preserved);
+   for(let i=0;i<doc.segments.length;i++){const r=doc.segments[i];if(!r.audio_ready||r.audio_error||r.keep_original)continue;const pos=r.audio_edit?.position??r.start,hi=Math.max(r.end,pos+lengths[i]),previous=i?Math.max(doc.segments[i-1].end,(doc.segments[i-1].audio_edit?.position??doc.segments[i-1].start)+lengths[i-1]):0,left=i?Math.min(r.start,(previous+r.start)/2):0,right=i+1<doc.segments.length?Math.max(hi,(hi+doc.segments[i+1].start)/2):doc.duration;intervals.push({start:pos<r.start?Math.max(0,pos-margin):Math.max(left,r.start-margin),end:Math.min(right,hi+margin)})}
+   const preserved=doc.segments.filter(r=>r.keep_original||r.audio_error||!r.audio_ready),curveCount=4096,curve=new Float32Array(curveCount);for(let i=0;i<curveCount;i++)curve[i]=weight(start+i/(curveCount-1)*(end-start),intervals,preserved,fade);
    const create=(buffer,offset,length,gain=1)=>{const source=this.ctx.createBufferSource(),volume=this.ctx.createGain();source.buffer=buffer;source.playbackRate.value=rate;volume.gain.value=gain;source.connect(volume);volume.connect(this.output);this.sources.push(source);source.onended=()=>{this.sources=this.sources.filter(x=>x!==source)};source.start(Math.max(this.ctx.currentTime,when),offset,length);return {source,volume}};
    const main=create(original,start-tile,end-start),back=create(bed,start-tile,end-start,0);
    const duration=(end-start)/rate;if(doc.has_background){const inverse=Float32Array.from(curve,x=>1-x);main.volume.gain.setValueCurveAtTime(inverse,Math.max(when,this.ctx.currentTime),duration);back.volume.gain.setValueCurveAtTime(curve,Math.max(when,this.ctx.currentTime),duration)}else back.volume.gain.setValueCurveAtTime(Float32Array.from(curve,x=>-x),Math.max(when,this.ctx.currentTime),duration);
@@ -113,18 +124,31 @@
   return result;
  }
  function boundaries(regions){return [...new Set(regions.flatMap(r=>[...(!r.openStart?[r.start]:[]),...(!r.openEnd?[r.end]:[])]))].sort((a,b)=>a-b)}
+ function targets(edges,playhead){
+  return Number.isFinite(playhead)&&playhead>=0?[...new Set([...edges,playhead])]:edges;
+ }
  function nearest(time,edges,scale,{disabled=false,locked=null,pixels=9,releasePixels=14}={}){
   if(disabled||!(scale>0))return {time,boundary:null};
-  if(locked!==null&&Math.abs(time-locked)*scale<=releasePixels)return {time:locked,boundary:locked};
-  let distance=pixels/scale,target=null;
-  for(const boundary of edges){const delta=Math.abs(time-boundary);if(delta<=distance){distance=delta;target=boundary}}
-  return {time:target??time,boundary:target};
+  let best=null;
+  for(const value of edges){
+   const item=typeof value==='number'?{time:value}:value,boundary=item?.time;
+   if(!Number.isFinite(boundary))continue;
+   const distance=Math.abs(time-boundary)*scale,held=boundary===locked;
+   if(distance>(held?releasePixels:pixels))continue;
+   const confidence=clamp(item.confidence??1,0,1),priority=clamp(item.priority??.5,0,1);
+   // Exact pointer hits win. Within a dense cluster, prefer reliable, relevant
+   // edges. The lock is a small stabilizer, never an unconditional override.
+   const score=(distance<=1?2:0)+.55*Math.max(0,1-distance/pixels)+.25*confidence+.2*priority+(held?.04:0);
+   if(!best||score>best.score+1e-9||(Math.abs(score-best.score)<=1e-9&&distance<best.distance))best={time:boundary,boundary,score,distance,kind:item.kind};
+  }
+  return best||{time,boundary:null};
  }
+
  function move(position,duration,edges,scale,options={}){
-  const start=nearest(position,edges,scale,options),end=nearest(position+duration,edges,scale,options);
-  if(start.boundary!==null&&(end.boundary===null||Math.abs(start.time-position)<=Math.abs(end.time-position-duration)))return {position:start.time,boundary:start.boundary,edge:'start'};
+  const start=nearest(position,edges,scale,{...options,locked:options.lockedEdge==='end'?null:options.locked}),end=nearest(position+duration,edges,scale,{...options,locked:options.lockedEdge==='start'?null:options.locked});
+  if(start.boundary!==null&&(end.boundary===null||start.score>=end.score))return {position:start.time,boundary:start.boundary,edge:'start'};
   if(end.boundary!==null)return {position:end.time-duration,boundary:end.boundary,edge:'end'};
   return {position,boundary:null,edge:null};
  }
- window.DublySourceSnap={speechRegions,groupRegions,boundaries,nearest,move};
+ window.DublySourceSnap={speechRegions,groupRegions,boundaries,targets,nearest,move};
 })();

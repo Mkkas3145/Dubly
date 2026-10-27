@@ -163,12 +163,12 @@ class PipelineTests(unittest.TestCase):
             mixed,_=sf.read(folder/'mix.wav',dtype='float32',always_2d=True)
             np.testing.assert_array_equal(mixed[:round(.3*SR)],original[:round(.3*SR)]);np.testing.assert_array_equal(mixed[round(2.7*SR):],original[round(2.7*SR):])
             np.testing.assert_allclose(mixed[SR:2*SR],.2-.05*render.TTS_GAIN,atol=1e-7)
-            np.testing.assert_allclose(mixed[round(.8*SR):SR],.2,atol=1e-7)
-            np.testing.assert_allclose(mixed[2*SR:round(2.2*SR)],.2,atol=1e-7)
+            np.testing.assert_allclose(mixed[round(.95*SR)],.25,atol=1e-7)
+            np.testing.assert_allclose(mixed[round(2.05*SR)],.25,atol=1e-7)
             np.testing.assert_array_equal(mixed[:round(.5*SR)],original[:round(.5*SR)])
             np.testing.assert_array_equal(mixed[round(2.5*SR):],original[round(2.5*SR):])
-            np.testing.assert_allclose(mixed[round(.65*SR)],.275,atol=1e-7)
-            np.testing.assert_allclose(mixed[round(2.35*SR)],.275,atol=1e-7)
+            np.testing.assert_allclose(mixed[round(.65*SR)],.3,atol=1e-7)
+            np.testing.assert_allclose(mixed[round(2.35*SR)],.3,atol=1e-7)
 
     def test_replacement_margin_clips_to_video_edges_and_shares_short_gaps(self):
         segments=[{'lo':0,'hi':SR//4},{'lo':SR//4+101,'hi':SR//2},{'lo':3*SR//4,'hi':SR}]
@@ -176,13 +176,9 @@ class PipelineTests(unittest.TestCase):
         intervals=render.replacement_intervals(segments,SR)
         self.assertEqual(segments,before)
         self.assertEqual(intervals[0]['lo'],0);self.assertEqual(intervals[-1]['hi'],SR)
-        midpoint=SR//4+50
-        self.assertEqual(intervals[0]['hi'],midpoint);self.assertEqual(intervals[1]['lo'],midpoint)
-        self.assertEqual(intervals[1]['hi'],(SR//2+3*SR//4)//2)
-        for original,padded in zip(segments,intervals):
-            self.assertLessEqual(padded['lo'],original['lo']);self.assertGreaterEqual(padded['hi'],original['hi'])
+        self.assertEqual(intervals,before)  # Zero extra replacement padding.
         weights=render.transition_weights(0,SR,intervals)
-        np.testing.assert_array_equal(weights[segments[0]['hi']:segments[1]['lo']],1)
+        self.assertTrue(np.any(weights[segments[0]['hi']:segments[1]['lo']]<1))
         self.assertLessEqual(float(weights.max()),1)
 
     def test_external_fades_overlap_without_attenuating_tts_or_double_removal(self):
@@ -190,7 +186,7 @@ class PipelineTests(unittest.TestCase):
         weights=render.transition_weights(0,4*SR,segments)
         np.testing.assert_array_equal(weights[SR:2*SR],1)
         np.testing.assert_array_equal(weights[round(2.2*SR):round(3.2*SR)],1)
-        self.assertAlmostEqual(float(weights[round(2.1*SR)]),.5,places=6)
+        self.assertAlmostEqual(float(weights[round(2.1*SR)]),0.,places=6)
         self.assertLessEqual(float(weights.max()),1)
         self.assertEqual(weights[0],0)
         self.assertEqual(weights[-1],0)
@@ -209,7 +205,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(len(mixed),len(original))
             for n,segment in enumerate(segments):
                 np.testing.assert_allclose(mixed[segment['lo']:segment['hi']],.2+(.05 if n==1 else -.05)*render.TTS_GAIN,atol=1e-7)
-            self.assertAlmostEqual(float(mixed[round(10.1*SR),0]),.2,places=6)
+            self.assertAlmostEqual(float(mixed[round(10.1*SR),0]),.3,places=6)
             np.testing.assert_array_equal(mixed[:9*SR],original[:9*SR])
             np.testing.assert_array_equal(mixed[round(11.3*SR):],original[round(11.3*SR):])
 
@@ -222,7 +218,7 @@ class PipelineTests(unittest.TestCase):
         self.assertGreaterEqual(float(weights.min()),0)
         self.assertLessEqual(float(weights.max()),1)
 
-    def test_excluded_reactions_do_not_interrupt_standard_200ms_fades(self):
+    def test_excluded_reactions_do_not_interrupt_standard_100ms_fades(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary)
             original=np.full((3*SR,2),.3,dtype=np.float32)
@@ -235,8 +231,8 @@ class PipelineTests(unittest.TestCase):
             np.testing.assert_array_equal(mixed[:round(.3*SR)],original[:round(.3*SR)])
             np.testing.assert_array_equal(mixed[round(2.7*SR):],original[round(2.7*SR):])
             np.testing.assert_allclose(mixed[SR:2*SR],.2-.05*render.TTS_GAIN,atol=1e-7)
-            self.assertAlmostEqual(float(mixed[round(.75*SR),0]),.3-.1*.75,places=4)
-            self.assertAlmostEqual(float(mixed[round(2.25*SR),0]),.3-.1*.75,places=4)
+            self.assertAlmostEqual(float(mixed[round(.75*SR),0]),.3,places=4)
+            self.assertAlmostEqual(float(mixed[round(2.25*SR),0]),.3,places=4)
 
     def test_duplicate_full_recording_dialogue_is_kept_once(self):
         complete=line(118.06,121.26,emotion='angry',text='勝つ！あいつは俺を怒らせた。')

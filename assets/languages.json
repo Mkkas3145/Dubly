@@ -2,8 +2,8 @@
   "version": 2,
   "checked": "2026-10-23",
   "models": {
-    "source": "elevenlabs/scribe-v2",
-    "translation": "google/gemini-3.8-flash",
+    "source": "google/gemini-4-argon",
+    "translation": "google/gemini-4-argon",
     "target": "fish-audio/drama-3"
   },
   "sources": {

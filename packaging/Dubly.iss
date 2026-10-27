@@ -37,7 +37,7 @@ CloseApplications=yes
 RestartApplications=no
 LicenseFile=..\LICENSE
 [Files]
-Source: "{#BundleRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "server\work\*,server\outputs\*,server\logs\*,server\.env,server\.env.*,*.pyc,*.pdb,*\__pycache__\*"
+Source: "{#BundleRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "server\work\*,server\outputs\*,server\logs\*,server\.env,server\.env.*,*.pyc,*.pdb,*\__pycache__\*,*\tests\*,*\test\*,*\benchmarks\*"
 [Tasks]
 Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
 [Icons]

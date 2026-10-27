@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let uploading=false,uploaded=false,dragDepth=0;
+let uploading=false,uploaded=false,dragDepth=0,translationSrt=null;
 const maxFileBytes=10*1024**3;
 const catalog=window.DublyLanguages,sourceLanguages=new Set(['auto',...(catalog?.source||['en','ja','ko'])]),targetLanguages=new Set(catalog?.target||['en','ja','ko']);
 const languages=new Set([...sourceLanguages,...targetLanguages]),languageNames={en:'영어',ja:'일본어',ko:'한국어'};
@@ -53,12 +53,23 @@ for(const kind of ['source','target']){
     }
 }
 window.addEventListener('pointerdown',e=>{if(!e.target.closest('.language-control'))closeLanguageMenus()});
-function lockLanguages(locked){closeLanguageMenus();for(const code of presetCodes)$('preset-'+code).disabled=locked;for(const kind of ['source','target']){$(kind+'-language').disabled=locked;$(kind+'-trigger').disabled=locked}}
+function lockLanguages(locked){closeLanguageMenus();for(const id of ['attach-translation-srt','translation-srt-file','remove-translation-srt'])if($(id))$(id).disabled=locked;for(const code of presetCodes)$('preset-'+code).disabled=locked;for(const kind of ['source','target']){$(kind+'-language').disabled=locked;$(kind+'-trigger').disabled=locked}}
 function notify(message,error=false){$('notice').textContent=message;$('notice').dataset.error=String(error)}
 function showProgress(percent){const value=Math.max(0,Math.min(100,Math.round(percent)));$('upload-line').style.width=value+'%';$('upload-line').setAttribute('aria-valuenow',String(value));$('drop-subtitle').textContent=`업로드 중 · ${value}%`}
+function selectTranslationSrt(file){
+ if(uploading||uploaded)return false;
+ if(file&&!file.name.toLowerCase().endsWith('.srt')){notify('SRT 파일을 선택해 주세요.',true);return false}
+ if(file&&file.size>2*1024**2){notify('SRT 파일은 최대 2MB입니다.',true);return false}
+ translationSrt=file||null;const label=$('translation-srt-name');label.textContent=file?.name||'';label.title=file?.name||'';label.hidden=!file;$('remove-translation-srt').hidden=!file;
+ if(!file)$('translation-srt-file').value='';return true;
+}
+$('attach-translation-srt').onclick=()=>$('translation-srt-file').click();
+$('translation-srt-file').onchange=e=>{const file=e.target.files?.[0];if(file&&!selectTranslationSrt(file))e.target.value=''};
+$('remove-translation-srt').onclick=()=>selectTranslationSrt(null);
+
 const queueItems=[],queueStorageKey='dubly-upload-queue-v1';let queueTimer=null,queuePolling=false;
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
-function rememberQueue(){try{localStorage.setItem(queueStorageKey,JSON.stringify(queueItems.filter(r=>r.id).map(r=>({id:r.id,name:r.name,source:r.source,target:r.target,preset:r.preset})).slice(-200)))}catch{}}
+function rememberQueue(){try{localStorage.setItem(queueStorageKey,JSON.stringify(queueItems.filter(r=>r.id).map(r=>({id:r.id,name:r.name,source:r.source,target:r.target,preset:r.preset,translationPrompt:r.translationPrompt,translationSrtName:r.translationSrtName})).slice(-200)))}catch{}}
 function syncQueueVisibility(hiddenId=null){const visible=window.DublyHistory?new Set(window.DublyHistory.ids()):null;for(let i=queueItems.length-1;i>=0;i--){const id=queueItems[i].id;if(id&&(id===hiddenId||(!hiddenId&&visible&&!visible.has(id))))queueItems.splice(i,1)}rememberQueue();drawQueue()}
 function drawQueue(){
  let removed=false;for(let i=queueItems.length-1;i>=0;i--){if(['ready','done'].includes(queueItems[i].state)){queueItems.splice(i,1);removed=true}}if(removed)rememberQueue();if(!queueItems.length&&queueTimer!==null){if(typeof clearInterval==='function')clearInterval(queueTimer);queueTimer=null}
@@ -89,7 +100,7 @@ function uploadFile(item){return new Promise((resolve,reject)=>{
  xhr.onload=()=>{let data;try{data=JSON.parse(xhr.responseText)}catch{return reject(Error('서버 응답을 확인하지 못했습니다. 다시 시도해 주세요.'))}if(xhr.status<200||xhr.status>=300)return reject(Error(typeof data.detail==='string'?data.detail:'업로드하지 못했습니다. 다시 시도해 주세요.'));if(!data.id)return reject(Error('업로드 결과를 확인하지 못했습니다.'));resolve(data)};
  xhr.onabort=()=>reject(Error('업로드를 중단했습니다.'));
  xhr.onerror=()=>reject(Error('연결이 끊겼습니다. 네트워크를 확인하고 다시 시도해 주세요.'));
- const form=new FormData();form.append('file',item.file);form.append('source_language',item.source);form.append('target_language',item.target);form.append('tts_preset',item.preset||'creative');xhr.send(form);
+ const form=new FormData();form.append('file',item.file);form.append('source_language',item.source);form.append('target_language',item.target);form.append('tts_preset',item.preset||'creative');form.append('translation_prompt',item.translationPrompt||'');if(item.translationSrt)form.append('translation_srt',item.translationSrt,item.translationSrt.name);xhr.send(form);
 })}
 async function chooseAudioTrack(item){
  const response=await fetch(`/api/videos/${item.id}/audio-tracks`),data=await response.json();if(!response.ok)throw Error(data.detail||'음성 트랙을 확인하지 못했습니다.');
@@ -105,7 +116,7 @@ async function chooseAudioTrack(item){
 function adoptUploadedParts(item,result,items,queue){
  const parts=Array.isArray(result.videos)&&result.videos.length?result.videos:[result];
  const first=parts[0];const group=result.split?first.id:undefined;Object.assign(item,{id:first.id,name:first.filename||item.name,state:'uploaded',percent:0,splitGroup:group});
- const children=parts.slice(1).map(part=>({id:part.id,name:part.filename,source:item.source,target:item.target,preset:item.preset,splitGroup:group,state:'uploaded',percent:0,cancelled:!!item.cancelled}));
+ const children=parts.slice(1).map(part=>({id:part.id,name:part.filename,source:item.source,target:item.target,preset:item.preset,translationPrompt:item.translationPrompt,translationSrtName:item.translationSrtName,splitGroup:group,state:'uploaded',percent:0,cancelled:!!item.cancelled}));
  if(children.length){items.splice(items.indexOf(item)+1,0,...children);if(queue!==items)queue.splice(queue.indexOf(item)+1,0,...children)}
  return [item,...children];
 }
@@ -152,7 +163,7 @@ async function uploadOne(files){
  if(!sourceLanguages.has(source)||!targetLanguages.has(target)||source===target){notify('서로 다른 원본 언어와 출력 언어를 선택해 주세요.',true);return}
  for(const file of list){if(!file.name.toLowerCase().endsWith('.mp4')){notify('MP4 영상을 선택해 주세요.',true);return}if(file.size>maxFileBytes){notify('파일 크기는 최대 10GB까지 가능합니다.',true);return}}
  const navigate=list.length===1&&!queueItems.some(r=>!['ready','done','error','cancelled'].includes(r.state));
- const items=list.map(file=>({file,name:file.name,source,target,preset:ttsPreset,state:'waiting',percent:0}));queueItems.push(...items);await processBatch(items,navigate);
+ const items=list.map(file=>({file,name:file.name,source,target,preset:ttsPreset,translationPrompt:($('translation-prompt')?.value||'').trim(),translationSrt,translationSrtName:translationSrt?.name,state:'waiting',percent:0}));queueItems.push(...items);await processBatch(items,navigate);
 }
 try{const stored=JSON.parse(localStorage.getItem(queueStorageKey)||'[]');if(Array.isArray(stored))for(const item of stored.slice(-200))if(item&&typeof item.id==='string'&&/^[a-f0-9-]{36}$/.test(item.id))queueItems.push({...item,state:'waiting'})}catch{}
 if(queueItems.length){syncQueueVisibility();if(queueItems.length)startQueuePolling()}

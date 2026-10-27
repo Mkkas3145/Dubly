@@ -6,12 +6,12 @@ import soundfile as sf
 from core import SR,atomic_json
 from rich_transcript import without_speakers
 
-POLICY={'version':35,'max_parts':None,'minimum_seconds':30.,'target_seconds':30.,
+POLICY={'version':42,'max_parts':None,'minimum_seconds':30.,'target_seconds':30.,
     'selection':'current_then_nearest_same_speaker_donors_in_source_order_no_repetition',
     'reference_tags':'current_untagged_donors_single_speaker_1','output_tags':'none','language_tags':'per_reference_part_and_output',
-    'reference_gap_seconds':.5,'outer_silence_seconds':.5,
+    'reference_gap_seconds':0.,'outer_silence_seconds':0.,'clip_fade_seconds':0.,
     'output_duration_hint':None,
-    'generation':'individual','instructions':'native_speaker_pronunciation_intonation_stress_rhythm_reference_acting_v7'}
+    'generation':'individual','instructions':'literal_english_current_performance_donor_identity_v11'}
 
 
 def prepare(segments,clean,folder,only_indices=None):

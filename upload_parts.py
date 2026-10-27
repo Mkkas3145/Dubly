@@ -3,7 +3,7 @@ from pathlib import Path
 import json,math,re,subprocess,uuid,shutil
 from core import probe,atomic_json
 
-MAX_PART_SECONDS=30*60
+MAX_PART_SECONDS=3*60*60
 
 def _run(args,timeout=600):
     p=subprocess.run(args,capture_output=True,text=True,encoding='utf8',errors='replace',timeout=timeout)
@@ -70,7 +70,7 @@ def _write(source,destination,part,max_seconds):
         _run(base+codec+['-avoid_negative_ts','make_zero','-movflags','+faststart',str(destination)],timeout=None)
         info=probe(destination);seconds=float(info.get('format',{}).get('duration',0))
         if 0<seconds<=max_seconds:return info,mode
-    raise RuntimeError('Split video exceeds the 30-minute limit and was not saved.')
+    raise RuntimeError(f'Split video exceeds the configured {max_seconds/3600:g}-hour limit and was not saved.')
 
 def cleanup(folders,root):
     parent=(Path(root)/'work/videos').resolve()

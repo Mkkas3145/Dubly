@@ -359,3 +359,31 @@ def test_each_line_and_split_part_requires_its_own_english_cue_in_prompt():
   assert 'No exceptions for short replies' in prompt
   assert 'A cue on a preceding line or part does not count' in prompt
   assert 'rather than omitting the cue or inventing an emotion' in prompt
+
+
+def test_audio_only_review_never_sends_transcript_in_retries_or_nickname_fallback(tmp_path):
+    source=rows();audio=tmp_path/'input.mp3';audio.write_bytes(b'audio')
+    clean=tmp_path/'source.wav';sf.write(clean,np.zeros(44100*5),44100)
+    captured=[]
+    def request(payload,key,folder,ids,progress,**kwargs):
+        captured.append(copy.deepcopy(payload))
+        wire=json.dumps(payload,ensure_ascii=False)
+        assert 'Hello' not in wire and 'no!' not in wire
+        context=json.loads(payload['messages'][1]['content'][0]['text'])
+        for row in context['pending_regions']:
+            assert 'source_text' not in row and 'speaker' not in row
+            assert all(len(w)==3 for w in row['words'])
+        assert payload['reasoning']=={'enabled':False}
+        if len(captured)==1:
+            return {'segments':[{'id':0,'parts':[{'e':None,'s':9,'c':'quiet, wavering', 'm':[{'i':1,'c':'hesitant, breathy'}]}]}]},{}
+        return {'segments':[{'id':1,'parts':[{'e':None,'s':9,'c':'soft, measured'}]}]},{}
+    with patch('qwen_audio_pipeline.encode_audio',return_value=(audio,{'format':'mp3'})), \
+         patch.object(q,'request',side_effect=request), \
+         patch.object(q,'complete_nicknames',side_effect=AssertionError('Never send source text to nickname completion')):
+        revised,report=q.review(clean,source,tmp_path,{'key':'test','language':'ko'},send_transcript=False)
+        cached,receipt=q.review(clean,source,tmp_path,{'key':'test','language':'ko'},send_transcript=False)
+    assert len(captured)==2 and len(revised)==2 and revised==cached
+    assert revised[0]['text']=='[quiet, wavering] Hello, [hesitant, breathy] no!'
+    assert all(r['speaker']=='9' for r in revised)
+    assert report['transcript_sent'] is False and receipt['requests']==0
+    assert report['speaker_names']['9']=='화자 9'

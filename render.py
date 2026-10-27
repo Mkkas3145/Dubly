@@ -20,13 +20,14 @@ from core import SR, FISH, LANGUAGES,LANGUAGE_CATALOG, TTS_CONCURRENCY, FIT_CONC
 from timing import FIT_VERSION, TIMING_POLICY, bounded_timing_audio
 from reference_clean import edge_guard,VERSION as REFERENCE_CLEAN_VERSION
 from mix_levels import TTS_GAIN
+from audio_edges import reference_fade_edges,FADE_SECONDS
 
-TRANSITION_SECONDS = .2
-REPLACEMENT_MARGIN_SECONDS = .2
-MIX_VERSION = 9
+TRANSITION_SECONDS = .1
+REPLACEMENT_MARGIN_SECONDS = 0.
+MIX_VERSION = 11
 MUX_AUDIO_ENCODERS=('aac_mf','aac') if os.name=='nt' else ('aac',)
 _TTS_SLOTS = threading.BoundedSemaphore(TTS_CONCURRENCY)
-REFERENCE_MARGIN_POLICY='clean-natural-edges-200ms-v1'
+REFERENCE_MARGIN_POLICY='zero-padding-acoustic-voice-release-no-reference-fades-v3'
 # Keep sampling defaults and the normal quality-oriented latency mode.
 TTS_PROVIDER_OPTIONS={'latency':'normal','temperature':1.0,'top_p':1.0,'condition_on_previous_chunks':True}
 
@@ -176,38 +177,13 @@ def reference_audio(clean,segment,destination):
     with sf.SoundFile(clean) as audio:
         audio.seek(lo)
         values=audio.read(hi-lo,dtype='float32',always_2d=True)
-        lead=np.empty((0,audio.channels),dtype=np.float32)
-        tail=lead
-        if segment.get('natural_reference_margin'):
-            # Scan outwards: stop at the first non-quiet block, never skip over it.
-            hop=max(1,round(.005*SR));maximum=round(.2*SR)
-            blocks=values[:len(values)//hop*hop]
-            if len(blocks):
-                levels=np.sqrt(np.mean(blocks.reshape(-1,hop,audio.channels)**2,axis=1)).max(axis=1)
-                threshold=max(1e-6,min(.002,float(np.percentile(levels,80))*.025))
-                def extend(boundary,direction,limit):
-                    kept=0
-                    while kept<maximum:
-                        size=min(hop,maximum-kept)
-                        start=boundary+kept if direction>0 else boundary-kept-size
-                        stop=start+size
-                        if start<0 or stop>len(audio) or (direction<0 and start<limit) or (direction>0 and stop>limit):break
-                        audio.seek(start);part=audio.read(size,dtype='float32',always_2d=True)
-                        if not np.isfinite(part).all() or np.sqrt(np.mean(part**2,axis=0)).max()>threshold or np.abs(part).max()>threshold*5:break
-                        kept+=size
-                    audio.seek(boundary if direction>0 else boundary-kept)
-                    return audio.read(kept,dtype='float32',always_2d=True)
-                lead=extend(lo,-1,segment.get('reference_margin_left',lo))
-                tail=extend(hi,1,segment.get('reference_margin_right',hi))
     if not len(values) or np.max(np.abs(values))<1e-6:raise RuntimeError('No audio exists in the reference interval.')
     mono=values.mean(axis=1)
     channel=None
     if np.sqrt(np.mean(mono**2))<.25*np.sqrt(np.mean(values**2)):
         channel=int(np.argmax(np.mean(values**2,axis=0)))
         mono=values[:,channel]
-    mono=edge_guard(mono,segment.get('reference_fade_in',0),segment.get('reference_fade_out',0))
-    downmix=lambda part:part.mean(axis=1) if channel is None else part[:,channel]
-    mono=np.concatenate([downmix(lead),mono,downmix(tail)])
+    mono=reference_fade_edges(mono,SR)
     sf.write(destination,mono,SR,subtype='PCM_16')
 
 
@@ -302,6 +278,7 @@ def fit_speech(prepared,cfg):
     if not fits_next_dialogue(timing,prepared['collision_budget']):
         atomic_json(folder/f'{index:04d}-rejected-timing.json',timing)
         raise RuntimeError('Dubbed audio still overlaps the next dialogue after duration correction. Preserving source audio for this dialogue instead of overlapping playback.')
+    timing.update(clip_edge_fade_seconds=FADE_SECONDS,clip_padding_seconds=0.)
     result={'index':index,'start':segment['start'],'end':segment['end'],**timing,**generation,
         'reference_clean_version':REFERENCE_CLEAN_VERSION,'reference_window_frames':[segment.get('reference_lo',segment['lo']),segment.get('reference_hi',segment['hi'])]}
     atomic_json(prepared['metadata'],result)
@@ -334,7 +311,7 @@ def synthesize_all(segments,clean,folder,cfg,progress,status=None):
 
 def synthesize_individual_all(segments,clean,folder,cfg,progress,status=None):
     # Derive deadlines from neighboring timeline starts before parallel fitting.
-    items=[{**s,'next_dialogue_start_frame':segments[i+1]['lo'] if i+1<len(segments) else None}
+    items=[{**s,'next_dialogue_start_frame':min((other['lo'] for other in segments if not other.get('deleted') and other['lo']>s['lo']),default=None)}
         for i,s in enumerate(segments)]
     def update(done,running,queued,fitting,waiting):
         generating_label='TTS 묶음' if any(len(s.get('_tts_parts',[]))>1 for s in segments) else 'TTS'
@@ -385,11 +362,13 @@ def synthesize_individual_all(segments,clean,folder,cfg,progress,status=None):
             if cfg['tts_output_guard']=='waveform':
                 from phonetic_output_guard import release_runtime
                 release_runtime()
-    return pipelined_queue(items,generate,fit,update)
+    reports=pipelined_queue(items,generate,fit,update)
+    from tts_collision import relax_collisions
+    return relax_collisions(segments,reports,clean,folder,cfg)
 
 
 def blend(original,clean,translated):
-    # The full TTS interval is never faded; transitions exist only outside it.
+    # Fitted TTS already carries the configured clip edge fades.
     return np.clip(original-clean+translated,-1,1)
 
 

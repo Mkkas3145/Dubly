@@ -1,5 +1,10 @@
 /* UI copy only. Video transcripts, translations, file names and speaker aliases are user data. */
 window.DublyMessages = [
+ ["참고 자막", "Reference subtitles", "参考字幕"],
+ ["SRT 파일 첨부", "Attach SRT file", "SRTファイルを添付"],
+ ["자막 첨부 해제", "Remove subtitle attachment", "添付字幕を削除"],
+ ["SRT 파일을 선택해 주세요.", "Select an SRT file.", "SRTファイルを選択してください。"],
+ ["SRT 파일은 최대 2MB입니다.", "SRT files must be 2MB or smaller.", "SRTファイルは2MB以下にしてください。"],
  ["영상 공유", "Share videos", "動画を共有"],
  ["공유 코드 만들기", "Create share code", "共有コードを作成"],
  ["공유 코드를 만들어 주세요.", "Create a share code.", "共有コードを作成してください。"],
@@ -75,7 +80,7 @@ window.DublyMessages = [
  ['더빙 언어 선택','Dubbing languages','吹き替え言語の選択'],['원본 언어','Source language','元の言語'],['출력 언어','Target language','出力言語'],
  ['MP4 영상 한 개 선택','Select one MP4 video','MP4動画を1本選択'],['영상을 이곳에 놓아주세요','Drop your video here','ここに動画をドロップ'],
  ['또는','or','または'],['파일 선택','Choose a file','ファイルを選択'],['으로 시작하기',' to get started','して開始'],
- ['최대 30분 · 10GB','Up to 30 minutes · 10GB','最大30分 · 10GB'],['파일 업로드','File upload','ファイルのアップロード'],
+ ['긴 영상은 3시간 이내 자동 분할 · 10GB','Long videos split into parts up to 3 hours · 10GB','長い動画は3時間以内に自動分割 · 10GB'],['파일 업로드','File upload','ファイルのアップロード'],
  ['현재 알파 테스트 중입니다. 일부 기능이 불안정할 수 있습니다.','Currently in alpha. Some features may be unstable.','現在アルファテスト中です。一部の機能が不安定な場合があります。'],
  ['이전 더빙','Previous projects','以前のプロジェクト'],['이전 더빙 검색…','Search previous projects…','以前のプロジェクトを検索…'],['이전 더빙 검색','Search previous projects','以前のプロジェクトを検索'],
  ['최신순 ↓','Newest first ↓','新しい順 ↓'],['오래된순 ↑','Oldest first ↑','古い順 ↑'],['분석 중','Analyzing','分析中'],
@@ -100,7 +105,7 @@ window.DublyMessages = [
  ['생성 음성 파형: 양끝 자르기, 쉼 구간을 드래그해 길이 조절','Generated waveform: trim either end or drag pauses to adjust duration','生成音声の波形：両端をトリミング、ポーズをドラッグして長さを調整'],
  ['양끝 핸들: 자르기 · 쉼 영역: 좌우 드래그로 길이 조절','End handles: trim · Pause regions: drag horizontally to resize','両端のハンドル：トリミング · ポーズ領域：左右にドラッグして長さを調整'],
  ['시작 자르기 · 초','Trim start · seconds','開始のトリミング · 秒'],['끝 자르기 · 초','Trim end · seconds','終了のトリミング · 秒'],['배치 위치 · 초','Position · seconds','配置位置 · 秒'],['Google Speedy · 가속','Google Speedy · speed up','Google Speedy · 加速'],['Google Speedy 가속 배율','Google Speedy speed multiplier','Google Speedy 加速倍率'],
- ['선택한 쉼 · 초','Selected pause · seconds','選択中のポーズ · 秒'],['이 쉼 초기화','Reset this pause','このポーズをリセット'],['오디오 편집 초기화','Reset audio edits','音声編集をリセット'],
+ ['선택한 쉼 · 초','Selected pause · seconds','選択中のポーズ · 秒'],['이 쉼 초기화','Reset this pause','このポーズをリセット'],['오디오 편집 초기화','Reset audio edits','音声編集をリセット'],['원본으로 변경','Use original audio','元の音声に変更'],['원본 TTS로 변경했습니다.','Switched to original TTS.','元のTTSに変更しました。'],
  ['타임라인','Timeline','タイムライン'],['클립 이동 · 드래그 / 확대해서 쉼과 발화 확인','Drag clips to move · Zoom in to inspect speech and pauses','ドラッグでクリップを移動 · 拡大して発話とポーズを確認'],['영상 재생 또는 일시정지','Play or pause video','動画の再生または一時停止'],['확대','Zoom','拡大'],['타임라인 확대','Timeline zoom','タイムラインの拡大'],['원본 파형 및 더빙 클립 타임라인','Original waveform and dubbed clip timeline','元音声の波形と吹き替えクリップのタイムライン'],
  ['ALPHA TEST · 편집 내용은 저장 후 반영됩니다. 음성을 바꾸려면 해당 대사를 다시 생성하세요.','ALPHA TEST · Save to apply edits. Regenerate a line to change its voice.','ALPHA TEST · 編集内容は保存後に反映されます。音声を変えるにはセリフを再生成してください。'],
  ['요청을 처리하지 못했습니다.','Could not process your request.','リクエストを処理できませんでした。'],['처리가 끝난 후 저장해 주세요.','Please save after processing finishes.','処理が完了してから保存してください。'],
@@ -148,3 +153,254 @@ window.DublyMessages.push(['자동 감지','Auto-detect','自動検出'],['자�
 window.DublyMessages.push(['재생 버튼을 눌러 다시 시도해 주세요.','Press play to try again.','再生ボタンを押して再試行してください。'],['오디오 또는 영상을 재생할 수 없습니다.','Cannot play this audio or video.','この音声または動画を再生できません。'],['미디어를 재생하지 못했습니다.','Could not play the media.','メディアを再生できませんでした。']);
 
 window.DublyMessages.push(['한 영상의 처리가 끝나면 다음 영상을 시작합니다.','The next video starts after the current video finishes.','動画の処理が完了してから次の動画を開始します。']);
+
+window.DublyMessages.push(...[
+ [
+  "양끝: 길이 조절 · 가운데: 이동 · 재생 커서·발화 경계에 자동 맞춤 · Alt: 해제 · C 누르기: 자르기",
+  "Edges: resize · Center: move · Snap to playhead/speech · Alt: bypass · Hold C: cut",
+  "両端: 長さ調整 · 中央: 移動 · 再生ヘッド・発話境界にスナップ · Alt: 解除 · C長押し: 分割"
+ ],
+ [
+  "드래그: 이동·길이 조절 · 재생 헤드: 대사 경계 맞춤 · Alt: 자석 해제 · C: 자르기",
+  "Drag: move/resize · Playhead: snap to clip edges · Alt: bypass snapping · C: cut",
+  "ドラッグ: 移動・長さ調整 · 再生ヘッド: セリフ境界にスナップ · Alt: 解除 · C: 分割"
+ ],
+ [
+  "발화 구간",
+  "Speech regions",
+  "発話区間"
+ ],
+ [
+  "원본 오디오",
+  "Original audio",
+  "元の音声"
+ ],
+ [
+  "원본 대사",
+  "Original dialogue",
+  "元のセリフ"
+ ],
+ [
+  "자르기",
+  "Cut",
+  "分割"
+ ],
+ [
+  "나누는 중…",
+  "Splitting…",
+  "分割中…"
+ ],
+ [
+  "오디오와 대본을 나누는 중…",
+  "Splitting audio and script…",
+  "音声と台本を分割中…"
+ ],
+ [
+  "오디오·원문·번역문·단서를 나눴습니다. Ctrl+Z로 되돌릴 수 있습니다.",
+  "Audio, transcript, translation and cues split. Press Ctrl+Z to undo.",
+  "音声・原文・翻訳・指示を分割しました。Ctrl+Zで元に戻せます。"
+ ],
+ [
+  "플레이어",
+  "Player",
+  "プレーヤー"
+ ],
+ [
+  "플레이어 · Dubly",
+  "Player · Dubly",
+  "プレーヤー · Dubly"
+ ],
+ [
+  "← 편집",
+  "← Edit",
+  "← 編集"
+ ],
+ [
+  "편집으로 돌아가기",
+  "Back to editor",
+  "編集画面に戻る"
+ ],
+ [
+  "최신 편집 불러오기",
+  "Load latest edits",
+  "最新の編集を読み込む"
+ ],
+ [
+  "더빙 영상",
+  "Dubbed video",
+  "吹き替え動画"
+ ],
+ [
+  "영상을 준비하고 있어요.",
+  "Preparing video.",
+  "動画を準備しています。"
+ ],
+ [
+  "저장된 편집 내용으로 재생합니다.",
+  "Playing your saved edits.",
+  "保存された編集内容を再生します。"
+ ],
+ [
+  "Space 재생 · ← → 5초 이동 · F 전체 화면",
+  "Space: play/pause · ← →: seek 5s · F: fullscreen",
+  "Space: 再生・一時停止 · ← →: 5秒移動 · F: 全画面"
+ ],
+ [
+  "재생목록",
+  "Playlist",
+  "プレイリスト"
+ ],
+ [
+  "다음 영상 자동 재생",
+  "Autoplay next video",
+  "次の動画を自動再生"
+ ],
+ [
+  "이전 영상",
+  "Previous video",
+  "前の動画"
+ ],
+ [
+  "다음 영상",
+  "Next video",
+  "次の動画"
+ ],
+ [
+  "← 이전",
+  "← Previous",
+  "← 前へ"
+ ],
+ [
+  "다음 →",
+  "Next →",
+  "次へ →"
+ ],
+ [
+  "현재 생성된 음성으로 재생 · 재생성 필요한 대사 {count}개",
+  "Playing current audio · {count} lines need regeneration",
+  "現在の音声を再生 · {count}件のセリフに再生成が必要"
+ ],
+ [
+  "재생 준비 대기 중이에요. 앞선 작업이 끝나면 시작합니다.",
+  "Queued for playback preparation. Waiting for the previous job.",
+  "再生準備の待機中です。先の処理が完了すると開始します。"
+ ],
+ [
+  "재생용 영상을 준비하고 있어요.",
+  "Preparing playback video.",
+  "再生用の動画を準備しています。"
+ ],
+ [
+  "재생용 영상을 준비하고 있어요. {percent}%",
+  "Preparing playback video. {percent}%",
+  "再生用の動画を準備しています。{percent}%"
+ ],
+ [
+  "현재 작업을 마치는 중이에요.",
+  "Finishing the current job.",
+  "現在の処理を完了しています。"
+ ],
+ [
+  "현재 작업을 마치는 중이에요. {percent}%",
+  "Finishing the current job. {percent}%",
+  "現在の処理を完了しています。{percent}%"
+ ],
+ [
+  "아직 편집할 영상이 준비되지 않았습니다.",
+  "The video is not ready to edit yet.",
+  "編集する動画の準備がまだできていません。"
+ ],
+ [
+  "영상을 준비하지 못했습니다.",
+  "Could not prepare the video.",
+  "動画を準備できませんでした。"
+ ],
+ [
+  "영상을 준비하지 못했습니다. 다시 시도해 주세요.",
+  "Could not prepare the video. Please try again.",
+  "動画を準備できませんでした。再試行してください。"
+ ],
+ [
+  "생성되지 않은 대사가 있습니다. 편집 화면에서 음성을 생성한 뒤 다시 열어 주세요.",
+  "Some dialogue has no audio. Generate it in the editor, then reopen this page.",
+  "未生成のセリフがあります。編集画面で音声を生成してから再度開いてください。"
+ ],
+ [
+  "편집한 음성과 영상을 합치고 있어요.",
+  "Combining edited audio and video.",
+  "編集した音声と動画を合成しています。"
+ ],
+ [
+  "{current} / {total} · {count}개 영상",
+  "{current} / {total} · {count} videos",
+  "{current} / {total} · {count}本の動画"
+ ],
+ [
+  "{part}번 영상 · {name}",
+  "Part {part} · {name}",
+  "動画 {part} · {name}"
+ ],
+ [
+  "{part}번 영상 편집",
+  "Edit part {part}",
+  "動画 {part} を編集"
+ ],
+ [
+  "현재 영상",
+  "Current video",
+  "現在の動画"
+ ],
+ [
+  "재생 가능",
+  "Ready to play",
+  "再生可能"
+ ],
+ [
+  "다음 영상이 아직 준비되지 않았습니다.",
+  "The next video is not ready yet.",
+  "次の動画はまだ準備できていません。"
+ ],
+ [
+  "오디오 편집 닫기",
+  "Close audio editor",
+  "音声編集を閉じる"
+ ],
+ [
+  "가속 배율",
+  "Speed factor",
+  "加速倍率"
+ ],
+ [
+  "편집 음성 재생 또는 일시정지",
+  "Play or pause edited audio",
+  "編集した音声を再生・一時停止"
+ ],
+ [
+  "오디오 재생 위치",
+  "Audio position",
+  "音声の再生位置"
+ ],
+ [
+  "오디오 볼륨",
+  "Audio volume",
+  "音声の音量"
+ ],
+ [
+  "원본 파형 및 더빙 클립 타임라인",
+  "Source waveform and dubbing clip timeline",
+  "元の波形と吹き替えクリップのタイムライン"
+ ],
+ [
+  "생성 음성 파형: 양끝 자르기, 쉼 구간을 드래그해 길이 조절",
+  "Generated waveform: trim edges or drag pauses to adjust length",
+  "生成音声の波形: 両端をトリム、無音区間をドラッグして長さ調整"
+ ]
+]);
+
+window.DublyMessages.push(...[["닫기", "Close", "閉じる"], ["대기열 초기화", "Reset queue", "キューをリセット"], ["선택 사항", "Optional", "任意"], ["추가 번역 지시", "Additional translation instructions", "追加の翻訳指示"], ["예: 인물의 말투를 살리고, 이름은 원어 발음대로 표기해 주세요.", "Example: Preserve each character’s speaking style and use phonetic spellings for names.", "例: 登場人物の話し方を生かし、名前は原語の発音に合わせて表記してください。"], ["다음 영상은 아직 처리 중이거나 준비되지 않았습니다.", "The next video is still processing or not ready yet.", "次の動画は処理中、またはまだ準備できていません。"], ["재생목록의 마지막 영상입니다.", "This is the last video in the playlist.", "プレイリストの最後の動画です。"], ["Gemini {count}개 대사 수신 · {seconds}초 경과", "Gemini: {count} lines received · {seconds}s elapsed", "Gemini: {count}件のセリフを受信 · {seconds}秒経過"]]);
+
+window.DublyMessages.push(["대사 전사·번역 중 · {count}개 수신 · {seconds}초 경과", "Transcribing and translating · {count} lines received · {seconds}s elapsed", "文字起こし・翻訳中 · {count}件受信 · {seconds}秒経過"]);
+
+window.DublyMessages.push(...[["페이드인 · 초", "Fade in · seconds", "フェードイン · 秒"], ["페이드아웃 · 초", "Fade out · seconds", "フェードアウト · 秒"], ["위쪽 핸들: 페이드 · 아래쪽 핸들: 자르기 · 쉼 영역: 길이 조절", "Top handles: fade · Bottom handles: trim · Pauses: adjust length", "上のハンドル: フェード · 下のハンドル: トリミング · 無音部分: 長さ調整"], ["페이드인 {value}초 · 드래그로 조절", "Fade in: {value}s · Drag to adjust", "フェードイン {value}秒 · ドラッグで調整"], ["페이드아웃 {value}초 · 드래그로 조절", "Fade out: {value}s · Drag to adjust", "フェードアウト {value}秒 · ドラッグで調整"]]);
+
+window.DublyMessages.push(["생성 음성 파형: 위쪽 핸들은 페이드, 아래쪽 핸들은 자르기", "Generated audio waveform: top handles adjust fades; bottom handles trim", "生成音声の波形: 上のハンドルでフェード、下のハンドルでトリミング"]);
